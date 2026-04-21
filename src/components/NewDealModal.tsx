@@ -44,7 +44,17 @@ export function NewDealModal({ defaultRmId, allProfiles, onClose, onCreate }: Pr
             </label>
             <label className="block">
               <span className="text-xs text-slate-500">潛在 AUM (USD) *</span>
-              <input type="number" value={aumUsd} onChange={e => setAumUsd(Number(e.target.value))} className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded text-sm" />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={aumUsd > 0 ? aumUsd.toLocaleString('en-US') : ''}
+                onChange={e => {
+                  const raw = e.target.value.replace(/[^\d]/g, '');
+                  setAumUsd(raw === '' ? 0 : Number(raw));
+                }}
+                placeholder="例:1,000,000"
+                className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono"
+              />
             </label>
           </div>
           <label className="block">

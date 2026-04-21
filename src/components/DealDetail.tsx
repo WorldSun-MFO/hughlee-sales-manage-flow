@@ -118,10 +118,14 @@ export function DealDetail({
             <label className="block">
               <span className="text-xs text-slate-500">潛在 AUM (USD)</span>
               <input
-                type="number"
-                value={Number(deal.aum_usd)}
-                onChange={(e) => onPatchDeal({ aum_usd: Number(e.target.value) })}
-                className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded"
+                type="text"
+                inputMode="numeric"
+                value={Number(deal.aum_usd ?? 0).toLocaleString('en-US')}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^\d]/g, '');
+                  onPatchDeal({ aum_usd: raw === '' ? 0 : Number(raw) });
+                }}
+                className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded font-mono"
               />
             </label>
             <label className="block col-span-2">
