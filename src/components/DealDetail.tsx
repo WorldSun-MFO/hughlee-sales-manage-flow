@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { STAGES, MEDDIC, CHECKLIST, PAIN_MATRIX } from '@/lib/constants';
+import { STAGES, MEDDIC, CHECKLIST, PAIN_MATRIX, STAGE_PROMPTS, MEDDIC_QUESTIONS } from '@/lib/constants';
 import type { Deal, Profile, Scores, Settings, StageId } from '@/lib/types';
 import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage } from '@/lib/utils';
 
@@ -64,6 +64,42 @@ export function DealDetail({
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-4">
+          {/* Stage prompt — what to do at this stage */}
+          {STAGE_PROMPTS[deal.stage] && (
+            <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-200 rounded-lg p-3 text-sm">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`text-xs px-1.5 py-0.5 rounded font-bold stage-${deal.stage}`}>{deal.stage}</span>
+                <span className="font-semibold text-slate-800">{STAGE_PROMPTS[deal.stage].goal}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="bg-white/60 rounded px-2 py-1.5">
+                  <div className="text-slate-500 mb-0.5">📥 入口條件</div>
+                  <div>{STAGE_PROMPTS[deal.stage].entry}</div>
+                </div>
+                <div className="bg-white/60 rounded px-2 py-1.5">
+                  <div className="text-slate-500 mb-0.5">📤 出口標準</div>
+                  <div>{STAGE_PROMPTS[deal.stage].exit}</div>
+                </div>
+              </div>
+              <div className="mt-2 text-xs">
+                <div className="text-slate-500 mb-1">🎯 這階段必記</div>
+                <ul className="space-y-0.5">
+                  {STAGE_PROMPTS[deal.stage].keyRecords.map((r, i) => (
+                    <li key={i} className="flex gap-1"><span className="text-amber-600">•</span>{r}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="mt-2 text-xs">
+                <div className="text-slate-500 mb-1">💡 建議動作</div>
+                <ul className="space-y-0.5">
+                  {STAGE_PROMPTS[deal.stage].nextActions.map((a, i) => (
+                    <li key={i} className="flex gap-1"><span className="text-indigo-500">→</span>{a}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           {/* Basic info */}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <label className="block">
@@ -148,6 +184,16 @@ export function DealDetail({
                     <div className="flex-1 text-xs text-slate-500">{field.hint}</div>
                     <div className="shrink-0 text-sm font-bold w-8 text-right">{scores[field.key]}</div>
                   </div>
+                  {MEDDIC_QUESTIONS[field.key]?.length > 0 && (
+                    <details className="mb-2 text-xs">
+                      <summary className="cursor-pointer text-indigo-600 hover:text-indigo-800 select-none">💬 推薦問法</summary>
+                      <ul className="mt-1 pl-1 space-y-0.5 text-slate-600 bg-slate-50 rounded p-2">
+                        {MEDDIC_QUESTIONS[field.key].map((q, i) => (
+                          <li key={i} className="flex gap-1"><span className="text-slate-400">•</span><span>{q}</span></li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   <div className="grid grid-cols-11 gap-1">
                     {Array.from({ length: 11 }, (_, n) => (
                       <button

@@ -22,6 +22,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
   const supabase = useMemo(() => createClient(), []);
   const [deals, setDeals] = useState<Deal[]>(initialDeals);
   const [settings, setSettings] = useState<Settings>(initialSettings);
+  const [profiles, setProfiles] = useState<Profile[]>(allProfiles);
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -38,6 +39,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
       .on('postgres_changes', { event: '*', schema: 'public', table: 'score_notes' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stage_checklist' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => refetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => refetchProfiles())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,6 +55,11 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
         .order('last_updated', { ascending: false });
       if (data) setDeals(data as Deal[]);
     }, 250);
+  }, [supabase]);
+
+  const refetchProfiles = useCallback(async () => {
+    const { data } = await supabase.from('profiles').select('*').order('full_name');
+    if (data) setProfiles(data as Profile[]);
   }, [supabase]);
 
   // --- Derived ---
@@ -174,6 +181,25 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
     await supabase.from('settings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1);
   }
 
+  async function addMember(input: { email: string; full_name: string; role: 'rm' | 'manager' }) {
+    const email = input.email.trim().toLowerCase();
+    const { data, error } = await supabase.from('profiles')
+      .insert({ id: crypto.randomUUID(), email, full_name: input.full_name, rm_code: input.full_name, role: input.role })
+      .select().single();
+    if (error) throw error;
+    if (data) setProfiles(ps => [...ps, data as Profile].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '')));
+  }
+
+  async function updateMember(id: string, patch: { full_name?: string; role?: 'rm' | 'manager' }) {
+    setProfiles(ps => ps.map(p => p.id === id ? { ...p, ...patch } : p));
+    await supabase.from('profiles').update(patch).eq('id', id);
+  }
+
+  async function removeMember(id: string) {
+    setProfiles(ps => ps.filter(p => p.id !== id));
+    await supabase.from('profiles').delete().eq('id', id);
+  }
+
   // --- Render ---
   return (
     <>
@@ -242,7 +268,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
         <section className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap gap-2 items-center">
           <select value={filter.rm} onChange={e => setFilter(f => ({ ...f, rm: e.target.value }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
             <option value="">所有 RM</option>
-            {allProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
           </select>
           <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
             <input type="checkbox" checked={filter.redFlag} onChange={e => setFilter(f => ({ ...f, redFlag: e.target.checked }))} className="accent-rose-600" />
@@ -305,7 +331,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
         <DealDetail
           deal={currentDeal}
           settings={settings}
-          allProfiles={allProfiles}
+          allProfiles={profiles}
           profile={profile}
           onClose={() => setCurrentDealId(null)}
           onPatchDeal={(patch) => patchDeal(currentDeal.id, patch)}
@@ -321,7 +347,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
       {showNewDeal && (
         <NewDealModal
           defaultRmId={profile.id}
-          allProfiles={allProfiles}
+          allProfiles={profiles}
           onClose={() => setShowNewDeal(false)}
           onCreate={createDeal}
         />
@@ -331,8 +357,12 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
         <SettingsModal
           settings={settings}
           profile={profile}
+          allProfiles={profiles}
           onClose={() => setShowSettings(false)}
           onSave={saveSettings}
+          onAddMember={addMember}
+          onUpdateMember={updateMember}
+          onRemoveMember={removeMember}
         />
       )}
     </>
