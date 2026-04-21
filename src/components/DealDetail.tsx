@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { STAGES, MEDDIC, CHECKLIST, STAGE_PROMPTS, QUESTION_BANK } from '@/lib/constants';
-import type { Deal, PainPoint, Profile, Scores, Settings } from '@/lib/types';
-import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage } from '@/lib/utils';
+import { STAGES, MEDDIC, CHECKLIST, STAGE_PROMPTS, QUESTION_BANK, TIER_STYLES } from '@/lib/constants';
+import type { Deal, PainPoint, Profile, Scores, Settings, Tier } from '@/lib/types';
+import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage, contactOverdue, contactDaysSince, getTierFromAum } from '@/lib/utils';
 
 interface Props {
   deal: Deal;
@@ -34,6 +34,15 @@ export function DealDetail({
   const done = items.filter(it => deal.stage_checklist?.some(c => c.item_key === it.key && c.checked)).length;
   const canAdvance = items.length > 0 && done === items.length;
   const next = nextStage(deal.stage);
+  const tierCfg = settings.tier_config?.tiers ?? [];
+  const contactInfo = contactOverdue(deal, tierCfg);
+  const suggestedTier = getTierFromAum(Number(deal.aum_usd ?? 0), tierCfg);
+
+  async function logContact() {
+    const now = new Date().toISOString();
+    onPatchDeal({ last_contact_at: now });
+    onAddComment(`📞 已記錄本次聯繫`);
+  }
 
   const getNote = (field: keyof Scores) => deal.score_notes?.find(n => n.field === field) ?? { evidence: '', next_action: '' };
 
@@ -155,6 +164,58 @@ export function DealDetail({
                 className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded bg-slate-50 text-slate-500"
               />
             </label>
+          </div>
+
+          {/* Customer Tier + Last Contact */}
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <span>🎖 客戶等級 + 聯繫提醒</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs text-slate-500">客戶等級 <span className="text-slate-400">(建議 {suggestedTier} 依 AUM)</span></span>
+                <div className="mt-1 flex gap-1">
+                  {(['SSS','S','A','C'] as Tier[]).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => onPatchDeal({ tier: t })}
+                      className={`flex-1 text-xs px-2 py-1.5 rounded font-bold transition ${deal.tier === t ? TIER_STYLES[t] : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+                    >{t}</button>
+                  ))}
+                </div>
+                {deal.tier && (
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    {tierCfg.find(tc => tc.key === deal.tier)?.name} · 建議每 {tierCfg.find(tc => tc.key === deal.tier)?.contact_days} 天聯繫
+                  </div>
+                )}
+              </label>
+              <div className="block">
+                <span className="text-xs text-slate-500">最後聯繫</span>
+                <div className="mt-1 flex gap-1">
+                  <input
+                    type="date"
+                    value={deal.last_contact_at ? deal.last_contact_at.slice(0, 10) : ''}
+                    onChange={e => onPatchDeal({ last_contact_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                    className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                  />
+                  <button
+                    onClick={logContact}
+                    title="按下代表今天剛聯繫過"
+                    className="px-2 py-1.5 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 font-semibold whitespace-nowrap"
+                  >📞 剛聯繫過</button>
+                </div>
+                {contactInfo && (
+                  <div className={`text-[11px] mt-1 font-medium ${
+                    contactInfo.status === 'overdue' ? 'text-rose-600' :
+                    contactInfo.status === 'due_soon' ? 'text-amber-600' : 'text-emerald-600'
+                  }`}>
+                    {contactInfo.status === 'overdue' && `⚠ 已逾期 ${contactInfo.deltaDays} 天未聯繫`}
+                    {contactInfo.status === 'due_soon' && `🔔 ${Math.abs(contactInfo.deltaDays)} 天內需聯繫`}
+                    {contactInfo.status === 'ok' && `✓ 已聯繫 ${contactInfo.daysSince} 天(週期內)`}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Stage control */}

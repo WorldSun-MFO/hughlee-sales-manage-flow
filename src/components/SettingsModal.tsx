@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
-import type { PainPoint, Profile, Settings, StageId } from '@/lib/types';
-import { STAGES } from '@/lib/constants';
+import type { PainPoint, Profile, Settings, StageId, Tier, TierConfigItem } from '@/lib/types';
+import { STAGES, TIER_STYLES } from '@/lib/constants';
+import { fmtMoney } from '@/lib/utils';
 
 interface Props {
   settings: Settings;
@@ -286,6 +287,92 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                 </div>
               </div>
             )}
+          </div>
+
+          {/* 客戶等級 + 聯繫頻率 */}
+          <div>
+            <h3 className="font-semibold mb-2">🎖 客戶等級 + 聯繫頻率</h3>
+            <p className="text-xs text-slate-500 mb-2">
+              不同等級客戶有不同聯繫週期。系統會提醒 RM:「這個客戶已 X 天沒聯繫,該主動接觸了」。
+            </p>
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="text-left px-2 py-1.5 w-14">等級</th>
+                    <th className="text-left px-2 py-1.5">顯示名稱</th>
+                    <th className="text-left px-2 py-1.5">AUM 門檻 (USD)</th>
+                    <th className="text-left px-2 py-1.5 w-28">聯繫週期 (天)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(settings.tier_config?.tiers ?? []).map((t, idx) => (
+                    <tr key={t.key} className="border-t border-slate-100">
+                      <td className="px-2 py-1.5">
+                        <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${TIER_STYLES[t.key] ?? 'bg-slate-200'}`}>{t.key}</span>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {isManager ? (
+                          <input
+                            defaultValue={t.name}
+                            onBlur={e => {
+                              if (e.target.value !== t.name) {
+                                const newTiers = [...(settings.tier_config?.tiers ?? [])];
+                                newTiers[idx] = { ...newTiers[idx], name: e.target.value };
+                                onSave({ tier_config: { tiers: newTiers } });
+                              }
+                            }}
+                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded"
+                          />
+                        ) : <span>{t.name}</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {isManager ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            defaultValue={t.aum_min.toLocaleString('en-US')}
+                            onBlur={e => {
+                              const n = Number(e.target.value.replace(/[^\d]/g, ''));
+                              if (n !== t.aum_min) {
+                                const newTiers = [...(settings.tier_config?.tiers ?? [])];
+                                newTiers[idx] = { ...newTiers[idx], aum_min: n };
+                                onSave({ tier_config: { tiers: newTiers } });
+                              }
+                            }}
+                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded font-mono"
+                          />
+                        ) : <span className="font-mono">{fmtMoney(t.aum_min)}</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {isManager ? (
+                          <input
+                            type="number"
+                            min={1}
+                            defaultValue={t.contact_days}
+                            onBlur={e => {
+                              const n = Number(e.target.value);
+                              if (n > 0 && n !== t.contact_days) {
+                                const newTiers = [...(settings.tier_config?.tiers ?? [])];
+                                newTiers[idx] = { ...newTiers[idx], contact_days: n };
+                                onSave({ tier_config: { tiers: newTiers } });
+                              }
+                            }}
+                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded"
+                          />
+                        ) : <span>{t.contact_days} 天</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-slate-400 mt-2">
+              💡 等級依 AUM 門檻對應:SSS &ge; {fmtMoney(settings.tier_config?.tiers?.find(t => t.key === 'SSS')?.aum_min ?? 0)}、
+              S &ge; {fmtMoney(settings.tier_config?.tiers?.find(t => t.key === 'S')?.aum_min ?? 0)}、
+              A &ge; {fmtMoney(settings.tier_config?.tiers?.find(t => t.key === 'A')?.aum_min ?? 0)}、
+              C &ge; {fmtMoney(settings.tier_config?.tiers?.find(t => t.key === 'C')?.aum_min ?? 0)}。
+            </p>
           </div>
 
           {/* 階段機率 */}

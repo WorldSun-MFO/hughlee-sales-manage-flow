@@ -1,5 +1,14 @@
 export type StageId = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7';
 
+export type Tier = 'SSS' | 'S' | 'A' | 'C';
+
+export interface TierConfigItem {
+  key: Tier;
+  name: string;
+  aum_min: number;
+  contact_days: number;
+}
+
 export type Role = 'rm' | 'manager';
 
 export interface Profile {
@@ -64,6 +73,8 @@ export interface Deal {
   product: string | null;
   first_contact: string;
   last_updated: string;
+  last_contact_at: string | null;
+  tier: Tier | null;
   stage: StageId;
   next_step: string | null;
   created_at: string;
@@ -79,4 +90,5 @@ export interface Settings {
   id: 1;
   stage_probs: Record<StageId, number>;
   red_flag: { ebScore: number; totalScore: number; staleDays: number };
+  tier_config: { tiers: TierConfigItem[] };
 }

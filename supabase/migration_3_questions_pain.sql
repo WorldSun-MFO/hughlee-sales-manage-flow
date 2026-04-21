@@ -23,7 +23,10 @@ create policy deal_questions_all on public.deal_questions for all to authenticat
   using (exists (select 1 from public.deals d where d.id = deal_questions.deal_id and (d.rm_id = auth.uid() or public.is_manager())))
   with check (exists (select 1 from public.deals d where d.id = deal_questions.deal_id and (d.rm_id = auth.uid() or public.is_manager())));
 
-alter publication supabase_realtime add table public.deal_questions;
+do $$ begin
+  alter publication supabase_realtime add table public.deal_questions;
+exception when duplicate_object then null;
+end $$;
 
 -- ---------- 2. Pain Points(痛點 → 商品矩陣) ----------
 create table if not exists public.pain_points (
@@ -37,6 +40,10 @@ create table if not exists public.pain_points (
   created_by uuid references public.profiles(id),
   updated_at timestamptz not null default now()
 );
+
+-- 防止重複(痛點文字為 unique)
+alter table public.pain_points drop constraint if exists pain_points_pain_unique;
+alter table public.pain_points add constraint pain_points_pain_unique unique (pain);
 create index if not exists idx_pain_points_order on public.pain_points(order_idx);
 
 alter table public.pain_points enable row level security;
@@ -50,7 +57,10 @@ drop policy if exists pain_points_write on public.pain_points;
 create policy pain_points_write on public.pain_points for all to authenticated
   using (public.is_manager()) with check (public.is_manager());
 
-alter publication supabase_realtime add table public.pain_points;
+do $$ begin
+  alter publication supabase_realtime add table public.pain_points;
+exception when duplicate_object then null;
+end $$;
 
 -- 預載 Playbook v2.1 的 14 筆痛點 → 商品(既有 10 條 + v2.1 新增 4 條)
 insert into public.pain_points (pain, product, pitch, tiers, order_idx) values
@@ -68,4 +78,4 @@ insert into public.pain_points (pain, product, pitch, tiers, order_idx) values
   ('下一代在國外讀書 / 工作',    '香港保單 + 信託',                '受益人可跨境、稅務處理靈活',                                  'L1–L4',           120),
   ('想做最大級距的保單特別貸款', '宏利 80M+ 特別貸款',             '5 年 IRR 可達 10.8%,業界最大額級距',                          'L4 專屬',         130),
   ('想用既有大額保單槓桿',       'HSBC 500 萬級保費融資',          '5 年 IRR 24%,自付 10.5%',                                    'L2(主力)、L3',   140)
-on conflict do nothing;
+on conflict (pain) do nothing;

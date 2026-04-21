@@ -1,15 +1,18 @@
 'use client';
 import { useState } from 'react';
-import type { Profile } from '@/lib/types';
+import type { Profile, TierConfigItem } from '@/lib/types';
+import { TIER_STYLES } from '@/lib/constants';
+import { getTierFromAum } from '@/lib/utils';
 
 interface Props {
   defaultRmId: string;
   allProfiles: Profile[];
+  tierConfig: TierConfigItem[];
   onClose: () => void;
   onCreate: (input: { name: string; rm_id: string; aum_usd: number; product: string; first_contact: string }) => Promise<void>;
 }
 
-export function NewDealModal({ defaultRmId, allProfiles, onClose, onCreate }: Props) {
+export function NewDealModal({ defaultRmId, allProfiles, tierConfig, onClose, onCreate }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [name, setName] = useState('');
   const [rmId, setRmId] = useState(defaultRmId);
@@ -55,6 +58,17 @@ export function NewDealModal({ defaultRmId, allProfiles, onClose, onCreate }: Pr
                 placeholder="例:1,000,000"
                 className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono"
               />
+              {aumUsd > 0 && (() => {
+                const tier = getTierFromAum(aumUsd, tierConfig);
+                const cfg = tierConfig.find(t => t.key === tier);
+                return (
+                  <div className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
+                    自動分級:
+                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${TIER_STYLES[tier]}`}>{tier}</span>
+                    <span>{cfg?.name} · 每 {cfg?.contact_days} 天聯繫</span>
+                  </div>
+                );
+              })()}
             </label>
           </div>
           <label className="block">

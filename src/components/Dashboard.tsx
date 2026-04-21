@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { STAGES } from '@/lib/constants';
-import type { Deal, PainPoint, Profile, Settings, StageId, Scores } from '@/lib/types';
-import { fmtMoney, totalScore, redFlag, daysSince, stageIdx } from '@/lib/utils';
+import { STAGES, TIER_STYLES } from '@/lib/constants';
+import type { Deal, PainPoint, Profile, Settings, StageId, Scores, Tier } from '@/lib/types';
+import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
 import { SettingsModal } from './SettingsModal';
@@ -28,7 +28,8 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [filter, setFilter] = useState({ rm: '', stage: '' as StageId | '', redFlag: false, search: '', sort: 'updated' as 'updated' | 'aum' | 'score' | 'stage' });
+  const [filter, setFilter] = useState({ rm: '', stage: '' as StageId | '', tier: '' as Tier | '', redFlag: false, overdue: false, search: '', sort: 'updated' as 'updated' | 'aum' | 'score' | 'stage' });
+  const tierCfg = settings.tier_config?.tiers ?? [];
 
   const currentDeal = currentDealId ? deals.find(d => d.id === currentDealId) ?? null : null;
 
@@ -78,12 +79,16 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const l4PlusPct = deals.length ? Math.round(l4PlusCount / deals.length * 100) : 0;
   const redFlagCount = deals.filter(d => redFlag(d, settings)).length;
   const activeDealsCount = deals.filter(d => d.stage !== 'L7').length;
+  const overdueCount = deals.filter(d => d.stage !== 'L7' && contactOverdue(d, tierCfg)?.status === 'overdue').length;
+  const dueSoonCount = deals.filter(d => d.stage !== 'L7' && contactOverdue(d, tierCfg)?.status === 'due_soon').length;
 
   const filteredDeals = useMemo(() => {
     const list = deals.filter(d => {
       if (filter.rm && d.rm_id !== filter.rm) return false;
       if (filter.stage && d.stage !== filter.stage) return false;
+      if (filter.tier && d.tier !== filter.tier) return false;
       if (filter.redFlag && !redFlag(d, settings)) return false;
+      if (filter.overdue && contactOverdue(d, tierCfg)?.status !== 'overdue') return false;
       if (filter.search) {
         const q = filter.search.toLowerCase();
         const hay = `${d.name} ${d.product ?? ''} ${d.next_step ?? ''} ${d.rm?.full_name ?? ''}`.toLowerCase();
@@ -98,7 +103,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
       return new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime();
     });
     return list;
-  }, [deals, filter, settings]);
+  }, [deals, filter, settings, tierCfg]);
 
   const stageCount = (id: StageId) => deals.filter(d => d.stage === id).length;
   const stageAum = (id: StageId) => deals.filter(d => d.stage === id).reduce((s, d) => s + Number(d.aum_usd ?? 0), 0);
@@ -168,9 +173,11 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   }
 
   async function createDeal(input: { name: string; rm_id: string; aum_usd: number; product: string; first_contact: string }) {
+    const tier = getTierFromAum(input.aum_usd, tierCfg);
+    const nowIso = new Date().toISOString();
     const { data } = await supabase.from('deals').insert({
       name: input.name.trim(), rm_id: input.rm_id, aum_usd: input.aum_usd, product: input.product,
-      first_contact: input.first_contact, stage: 'L1', created_by: profile.id,
+      first_contact: input.first_contact, stage: 'L1', tier, last_contact_at: nowIso, created_by: profile.id,
     }).select('*, scores(*), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)').single();
     if (data) {
       setDeals(prev => [data as Deal, ...prev]);
@@ -267,11 +274,28 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
 
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4 pb-24">
 
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <KpiTile label="Pipeline 總 AUM" value={fmtMoney(totalAum)} hint={`${activeDealsCount} 個活躍案件`} />
           <KpiTile label="加權預測" value={fmtMoney(weightedForecast)} hint="依階段機率加權" valueClass="text-indigo-700" />
-          <KpiTile label="L4+ 高品質案件" value={`${l4PlusCount} 件`} hint={`佔比 ${l4PlusPct}% (健康 ≥25%)`} valueClass="text-emerald-600" />
-          <KpiTile label="🚩 紅旗案件" value={`${redFlagCount} 件`} hint="建議優先處理或放棄" valueClass={redFlagCount > 0 ? 'text-rose-600' : 'text-slate-400'} />
+          <KpiTile label="L4+ 高品質" value={`${l4PlusCount} 件`} hint={`佔比 ${l4PlusPct}% (健康 ≥25%)`} valueClass="text-emerald-600" />
+          <button onClick={() => setFilter(f => ({ ...f, overdue: !f.overdue, redFlag: false }))} className="text-left">
+            <KpiTile
+              label="🔔 需聯繫"
+              value={`${overdueCount} 件`}
+              hint={dueSoonCount > 0 ? `+ ${dueSoonCount} 件 3 天內到期` : '點此只看逾期'}
+              valueClass={overdueCount > 0 ? 'text-amber-600' : 'text-slate-400'}
+              highlight={filter.overdue}
+            />
+          </button>
+          <button onClick={() => setFilter(f => ({ ...f, redFlag: !f.redFlag, overdue: false }))} className="text-left">
+            <KpiTile
+              label="🚩 紅旗"
+              value={`${redFlagCount} 件`}
+              hint="EB 未確認/分低/久未更新"
+              valueClass={redFlagCount > 0 ? 'text-rose-600' : 'text-slate-400'}
+              highlight={filter.redFlag}
+            />
+          </button>
         </section>
 
         <section className="bg-white rounded-xl border border-slate-200 p-4">
@@ -311,9 +335,20 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
             <option value="">所有 RM</option>
             {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
           </select>
+          <select value={filter.tier} onChange={e => setFilter(f => ({ ...f, tier: e.target.value as Tier | '' }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
+            <option value="">所有等級</option>
+            <option value="SSS">SSS 旗艦</option>
+            <option value="S">S 高階</option>
+            <option value="A">A 中階</option>
+            <option value="C">C 基礎</option>
+          </select>
+          <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+            <input type="checkbox" checked={filter.overdue} onChange={e => setFilter(f => ({ ...f, overdue: e.target.checked }))} className="accent-amber-600" />
+            <span>🔔 逾期聯繫</span>
+          </label>
           <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
             <input type="checkbox" checked={filter.redFlag} onChange={e => setFilter(f => ({ ...f, redFlag: e.target.checked }))} className="accent-rose-600" />
-            <span>🚩 只看紅旗</span>
+            <span>🚩 紅旗</span>
           </label>
           <input type="search" value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} placeholder="搜尋客戶/商品/下一步..." className="flex-1 min-w-[140px] px-3 py-1.5 text-sm border border-slate-200 rounded-lg" />
           <select value={filter.sort} onChange={e => setFilter(f => ({ ...f, sort: e.target.value as 'updated' | 'aum' | 'score' | 'stage' }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
@@ -329,11 +364,16 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           {filteredDeals.map(d => (
             <button key={d.id} onClick={() => setCurrentDealId(d.id)} className="w-full text-left bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition p-3 sm:p-4">
               <div className="flex items-start gap-3">
-                <div className="shrink-0">
+                <div className="shrink-0 flex flex-col gap-1">
                   <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex flex-col items-center justify-center font-bold text-xs stage-${d.stage}`}>
                     <div>{d.stage}</div>
                     <div className="text-[10px] font-normal opacity-80">{settings.stage_probs[d.stage]}%</div>
                   </div>
+                  {d.tier && (
+                    <div className={`text-[10px] font-bold text-center rounded px-1 py-0.5 ${TIER_STYLES[d.tier] ?? 'bg-slate-200'}`}>
+                      {d.tier}
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -341,6 +381,13 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
                       <div className="font-semibold text-sm sm:text-base flex items-center gap-2 flex-wrap">
                         <span>{d.name}</span>
                         <span className="text-xs text-slate-400 font-normal">RM {d.rm?.full_name || '—'}</span>
+                        {(() => {
+                          const ci = contactOverdue(d, tierCfg);
+                          if (!ci) return null;
+                          if (ci.status === 'overdue') return <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">🔔 逾期 {ci.deltaDays} 天未聯繫</span>;
+                          if (ci.status === 'due_soon') return <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100">🔔 {Math.abs(ci.deltaDays)} 天內需聯繫</span>;
+                          return null;
+                        })()}
                         {redFlag(d, settings) && <span className="text-xs px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">🚩 {redFlag(d, settings)}</span>}
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5">{d.product}</div>
@@ -391,6 +438,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
         <NewDealModal
           defaultRmId={profile.id}
           allProfiles={profiles}
+          tierConfig={tierCfg}
           onClose={() => setShowNewDeal(false)}
           onCreate={createDeal}
         />
@@ -416,9 +464,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   );
 }
 
-function KpiTile({ label, value, hint, valueClass }: { label: string; value: string; hint: string; valueClass?: string }) {
+function KpiTile({ label, value, hint, valueClass, highlight }: { label: string; value: string; hint: string; valueClass?: string; highlight?: boolean }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className={`bg-white rounded-xl border p-4 transition ${highlight ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200'}`}>
       <div className="text-xs text-slate-500">{label}</div>
       <div className={`mt-1 text-xl sm:text-2xl font-bold ${valueClass ?? ''}`}>{value}</div>
       <div className="text-xs text-slate-400 mt-1">{hint}</div>

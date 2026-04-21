@@ -1,4 +1,18 @@
-import type { StageId, Scores } from './types';
+import type { StageId, Scores, TierConfigItem } from './types';
+
+export const DEFAULT_TIER_CONFIG: TierConfigItem[] = [
+  { key: 'SSS', name: '旗艦 Flagship',   aum_min: 80_000_000, contact_days: 14 },
+  { key: 'S',   name: '高階 Premier',    aum_min: 50_000_000, contact_days: 30 },
+  { key: 'A',   name: '中階 Advanced',   aum_min: 10_000_000, contact_days: 30 },
+  { key: 'C',   name: '基礎 Foundation', aum_min:  1_000_000, contact_days: 90 },
+];
+
+export const TIER_STYLES: Record<string, string> = {
+  SSS: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white',
+  S:   'bg-indigo-600 text-white',
+  A:   'bg-blue-500 text-white',
+  C:   'bg-cyan-500 text-white',
+};
 
 export const STAGES: Array<{ id: StageId; name: string; targetConv: string }> = [
   { id: 'L1', name: '線索 / 初接觸',        targetConv: '50~60%' },

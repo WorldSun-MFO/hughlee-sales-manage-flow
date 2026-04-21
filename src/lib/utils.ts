@@ -1,4 +1,4 @@
-import type { Deal, Scores, Settings, StageId } from './types';
+import type { Deal, Scores, Settings, StageId, Tier, TierConfigItem } from './types';
 import { STAGES } from './constants';
 
 export function fmtMoney(n: number | null | undefined): string {
@@ -55,4 +55,30 @@ export function scoreColor(n: number): string {
   if (n >= 5) return 'bg-indigo-500 text-white';
   if (n >= 3) return 'bg-amber-500 text-white';
   return 'bg-rose-500 text-white';
+}
+
+export function getTierFromAum(aumUsd: number, tiers: TierConfigItem[]): Tier {
+  // 找出 aum 達到最低門檻的最高等級
+  const sorted = [...tiers].sort((a, b) => b.aum_min - a.aum_min);
+  for (const t of sorted) {
+    if (aumUsd >= t.aum_min) return t.key;
+  }
+  return 'C';
+}
+
+export function contactDaysSince(deal: Deal): number | null {
+  if (!deal.last_contact_at) return null;
+  return Math.floor((Date.now() - new Date(deal.last_contact_at).getTime()) / 86400000);
+}
+
+export function contactOverdue(deal: Deal, tiers: TierConfigItem[]): { status: 'ok' | 'due_soon' | 'overdue'; daysSince: number; interval: number; deltaDays: number } | null {
+  if (!deal.tier || !deal.last_contact_at) return null;
+  const tierCfg = tiers.find(t => t.key === deal.tier);
+  if (!tierCfg) return null;
+  const daysSince = contactDaysSince(deal) ?? 0;
+  const deltaDays = daysSince - tierCfg.contact_days;
+  let status: 'ok' | 'due_soon' | 'overdue' = 'ok';
+  if (deltaDays > 0) status = 'overdue';
+  else if (deltaDays >= -3) status = 'due_soon';
+  return { status, daysSince, interval: tierCfg.contact_days, deltaDays };
 }
