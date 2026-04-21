@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { STAGES, MEDDIC, CHECKLIST, PAIN_MATRIX, STAGE_PROMPTS, MEDDIC_QUESTIONS } from '@/lib/constants';
-import type { Deal, Profile, Scores, Settings, StageId } from '@/lib/types';
+import { STAGES, MEDDIC, CHECKLIST, STAGE_PROMPTS, QUESTION_BANK } from '@/lib/constants';
+import type { Deal, PainPoint, Profile, Scores, Settings } from '@/lib/types';
 import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage } from '@/lib/utils';
 
 interface Props {
@@ -10,19 +10,21 @@ interface Props {
   settings: Settings;
   allProfiles: Profile[];
   profile: Profile;
+  painPoints: PainPoint[];
   onClose: () => void;
   onPatchDeal: (patch: Partial<Deal>) => void;
   onPatchScore: (patch: Partial<Scores>) => void;
   onUpsertNote: (field: keyof Scores, patch: { evidence?: string; next_action?: string }) => void;
   onToggleChecklist: (itemKey: string) => void;
+  onToggleQuestion: (questionKey: string) => void;
   onAddComment: (body: string) => void;
   onAdvance: () => void;
   onDelete: () => void;
 }
 
 export function DealDetail({
-  deal, settings, allProfiles, profile, onClose,
-  onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onAddComment, onAdvance, onDelete
+  deal, settings, allProfiles, profile, painPoints, onClose,
+  onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onToggleQuestion, onAddComment, onAdvance, onDelete
 }: Props) {
   const [newComment, setNewComment] = useState('');
   const scores = deal.scores ?? { m:0, e:0, d1:0, d2:0, p:0, i:0, c1:0, c2:0 };
@@ -184,16 +186,38 @@ export function DealDetail({
                     <div className="flex-1 text-xs text-slate-500">{field.hint}</div>
                     <div className="shrink-0 text-sm font-bold w-8 text-right">{scores[field.key]}</div>
                   </div>
-                  {MEDDIC_QUESTIONS[field.key]?.length > 0 && (
-                    <details className="mb-2 text-xs">
-                      <summary className="cursor-pointer text-indigo-600 hover:text-indigo-800 select-none">💬 推薦問法</summary>
-                      <ul className="mt-1 pl-1 space-y-0.5 text-slate-600 bg-slate-50 rounded p-2">
-                        {MEDDIC_QUESTIONS[field.key].map((q, i) => (
-                          <li key={i} className="flex gap-1"><span className="text-slate-400">•</span><span>{q}</span></li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
+                  {(() => {
+                    const qs = QUESTION_BANK[field.key] ?? [];
+                    if (qs.length === 0) return null;
+                    const answeredSet = new Set((deal.deal_questions ?? []).filter(q => q.answered).map(q => q.question_key));
+                    const done = qs.filter(q => answeredSet.has(q.key)).length;
+                    const pct = Math.round(done / qs.length * 100);
+                    return (
+                      <details className="mb-2 text-xs">
+                        <summary className="cursor-pointer text-indigo-600 hover:text-indigo-800 select-none flex items-center gap-2">
+                          <span>💬 實戰題庫</span>
+                          <span className="text-slate-500 font-normal">{done}/{qs.length} 題已釐清</span>
+                          <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden max-w-[120px]">
+                            <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </summary>
+                        <ul className="mt-1 space-y-0.5 bg-slate-50 rounded p-2">
+                          {qs.map(item => {
+                            const checked = answeredSet.has(item.key);
+                            return (
+                              <li key={item.key} className="flex items-start gap-1.5 py-0.5 px-1 rounded hover:bg-white cursor-pointer" onClick={() => onToggleQuestion(item.key)}>
+                                <input type="checkbox" checked={checked} readOnly className="mt-0.5 accent-emerald-600 shrink-0" />
+                                <span className={checked ? 'text-slate-400 line-through' : 'text-slate-700'}>
+                                  {item.priority === 'high' && <span className="text-rose-500 mr-0.5" title="高優先">★</span>}
+                                  {item.q}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
+                    );
+                  })()}
                   <div className="grid grid-cols-11 gap-1">
                     {Array.from({ length: 11 }, (_, n) => (
                       <button
@@ -264,15 +288,17 @@ export function DealDetail({
 
           {/* Pain → product */}
           <div>
-            <h3 className="font-semibold text-sm mb-2">痛點 → 建議商品</h3>
+            <h3 className="font-semibold text-sm mb-2">痛點 → 建議商品 <span className="text-xs text-slate-400 font-normal">({painPoints.length} 條)</span></h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {PAIN_MATRIX.map(row => (
-                <div key={row.pain} className="border border-slate-200 rounded p-2 text-xs">
+              {painPoints.map(row => (
+                <div key={row.id} className="border border-slate-200 rounded p-2 text-xs">
                   <div className="font-semibold text-slate-700">「{row.pain}」</div>
                   <div className="text-indigo-700 font-medium mt-0.5">→ {row.product}</div>
+                  {row.tiers && <div className="text-[10px] text-slate-500 mt-0.5">適用層級:{row.tiers}</div>}
                   <div className="text-slate-500 mt-0.5">{row.pitch}</div>
                 </div>
               ))}
+              {painPoints.length === 0 && <div className="col-span-full text-xs text-slate-400 text-center py-4">尚未設定,請到設定頁新增</div>}
             </div>
           </div>
 

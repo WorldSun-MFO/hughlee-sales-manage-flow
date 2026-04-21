@@ -1,25 +1,34 @@
 'use client';
 import { useState } from 'react';
-import type { Profile, Settings, StageId } from '@/lib/types';
+import type { PainPoint, Profile, Settings, StageId } from '@/lib/types';
 import { STAGES } from '@/lib/constants';
 
 interface Props {
   settings: Settings;
   profile: Profile;
   allProfiles: Profile[];
+  painPoints: PainPoint[];
   onClose: () => void;
   onSave: (patch: Partial<Settings>) => Promise<void>;
   onAddMember: (input: { email: string; full_name: string; role: 'rm' | 'manager' }) => Promise<void>;
   onUpdateMember: (id: string, patch: { full_name?: string; role?: 'rm' | 'manager' }) => Promise<void>;
   onRemoveMember: (id: string) => Promise<void>;
+  onAddPain: (input: { pain: string; product: string; pitch: string; tiers: string }) => Promise<void>;
+  onUpdatePain: (id: string, patch: Partial<PainPoint>) => Promise<void>;
+  onRemovePain: (id: string) => Promise<void>;
 }
 
-export function SettingsModal({ settings, profile, allProfiles, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember }: Props) {
+export function SettingsModal({ settings, profile, allProfiles, painPoints, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember, onAddPain, onUpdatePain, onRemovePain }: Props) {
   const isManager = profile.role === 'manager';
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<'rm' | 'manager'>('rm');
   const [adding, setAdding] = useState(false);
+  const [newPain, setNewPain] = useState('');
+  const [newProduct, setNewProduct] = useState('');
+  const [newPitch, setNewPitch] = useState('');
+  const [newTiers, setNewTiers] = useState('');
+  const [addingPain, setAddingPain] = useState(false);
 
   async function submitNewMember() {
     if (!newEmail.trim() || !newName.trim()) { alert('請填 Email 與姓名'); return; }
@@ -31,6 +40,19 @@ export function SettingsModal({ settings, profile, allProfiles, onClose, onSave,
       alert('新增失敗:' + (err as Error).message);
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function submitNewPain() {
+    if (!newPain.trim() || !newProduct.trim()) { alert('請填痛點與商品'); return; }
+    setAddingPain(true);
+    try {
+      await onAddPain({ pain: newPain.trim(), product: newProduct.trim(), pitch: newPitch.trim(), tiers: newTiers.trim() });
+      setNewPain(''); setNewProduct(''); setNewPitch(''); setNewTiers('');
+    } catch (err) {
+      alert('新增失敗:' + (err as Error).message);
+    } finally {
+      setAddingPain(false);
     }
   }
 
@@ -142,6 +164,126 @@ export function SettingsModal({ settings, profile, allProfiles, onClose, onSave,
                 <p className="mt-2 text-xs text-slate-500">
                   ⚠️ Email 必須跟對方的 Google 帳號完全一致(含大小寫)。新增後先在案件裡把 RM 指給他,等他首次登入時系統會自動接管。
                 </p>
+              </div>
+            )}
+          </div>
+
+          {/* 痛點 → 商品 矩陣管理 */}
+          <div>
+            <h3 className="font-semibold mb-2">🎯 痛點 → 商品 矩陣 <span className="text-xs text-slate-400 font-normal">({painPoints.length} 條)</span></h3>
+            <p className="text-xs text-slate-500 mb-2">
+              客戶說出痛點時,業務員會直接在案件頁看到建議商品 + 切入話術。Manager 可新增/編輯/刪除。
+            </p>
+            <div className="border border-slate-200 rounded-lg overflow-hidden max-h-80 overflow-y-auto scrollbar-thin">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-500 sticky top-0">
+                  <tr>
+                    <th className="text-left px-2 py-1.5 w-10">#</th>
+                    <th className="text-left px-2 py-1.5">客戶痛點</th>
+                    <th className="text-left px-2 py-1.5">對應商品</th>
+                    <th className="text-left px-2 py-1.5">切入話術</th>
+                    <th className="text-left px-2 py-1.5">適用層級</th>
+                    <th className="px-2 py-1.5 w-12"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {painPoints.map((p, i) => (
+                    <tr key={p.id} className="border-t border-slate-100 align-top">
+                      <td className="px-2 py-1.5 text-slate-400 text-xs">{i + 1}</td>
+                      <td className="px-2 py-1.5">
+                        {isManager ? (
+                          <textarea
+                            defaultValue={p.pain}
+                            onBlur={e => { if (e.target.value !== p.pain) onUpdatePain(p.id, { pain: e.target.value }); }}
+                            rows={2}
+                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded text-xs resize-none"
+                          />
+                        ) : <span>{p.pain}</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {isManager ? (
+                          <textarea
+                            defaultValue={p.product}
+                            onBlur={e => { if (e.target.value !== p.product) onUpdatePain(p.id, { product: e.target.value }); }}
+                            rows={2}
+                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded text-xs text-indigo-700 resize-none"
+                          />
+                        ) : <span className="text-indigo-700">{p.product}</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {isManager ? (
+                          <textarea
+                            defaultValue={p.pitch}
+                            onBlur={e => { if (e.target.value !== p.pitch) onUpdatePain(p.id, { pitch: e.target.value }); }}
+                            rows={2}
+                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded text-xs text-slate-600 resize-none"
+                          />
+                        ) : <span className="text-slate-600">{p.pitch}</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {isManager ? (
+                          <input
+                            defaultValue={p.tiers}
+                            onBlur={e => { if (e.target.value !== p.tiers) onUpdatePain(p.id, { tiers: e.target.value }); }}
+                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded text-xs"
+                            placeholder="L1–L4"
+                          />
+                        ) : <span>{p.tiers}</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        {isManager && (
+                          <button
+                            onClick={() => { if (confirm(`刪除「${p.pain}」?`)) onRemovePain(p.id); }}
+                            className="text-rose-500 hover:underline"
+                          >刪</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {isManager && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="text-xs font-semibold mb-2">➕ 新增痛點</div>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={newPain}
+                    onChange={e => setNewPain(e.target.value)}
+                    placeholder="客戶痛點(例:「擔心美元貶值」)"
+                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
+                  />
+                  <input
+                    type="text"
+                    value={newProduct}
+                    onChange={e => setNewProduct(e.target.value)}
+                    placeholder="對應商品(例:「瑞郎分紅保單」)"
+                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
+                  />
+                  <input
+                    type="text"
+                    value={newPitch}
+                    onChange={e => setNewPitch(e.target.value)}
+                    placeholder="切入話術(簡短、有數字)"
+                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newTiers}
+                      onChange={e => setNewTiers(e.target.value)}
+                      placeholder="適用層級(例:L2–L4)"
+                      className="flex-1 px-2 py-1 border border-slate-200 rounded text-xs"
+                    />
+                    <button
+                      onClick={submitNewPain}
+                      disabled={addingPain}
+                      className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-xs whitespace-nowrap"
+                    >{addingPain ? '...' : '新增'}</button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

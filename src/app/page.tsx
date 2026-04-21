@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Dashboard } from '@/components/Dashboard';
-import type { Deal, Profile, Settings } from '@/lib/types';
+import type { Deal, PainPoint, Profile, Settings } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +23,7 @@ export default async function Home() {
       scores(*),
       score_notes(*),
       stage_checklist(*),
+      deal_questions(*),
       comments(id, deal_id, author_id, body, is_system, created_at),
       rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)
     `)
@@ -35,6 +36,13 @@ export default async function Home() {
     .order('full_name')
     .returns<Profile[]>();
 
+  const { data: painPoints } = await supabase
+    .from('pain_points')
+    .select('*')
+    .eq('is_active', true)
+    .order('order_idx')
+    .returns<PainPoint[]>();
+
   const { data: settings } = await supabase
     .from('settings')
     .select('*')
@@ -46,6 +54,7 @@ export default async function Home() {
       initialDeals={deals ?? []}
       profile={profile!}
       allProfiles={profiles ?? []}
+      initialPainPoints={painPoints ?? []}
       settings={settings ?? { id: 1, stage_probs: { L1:7,L2:13,L3:20,L4:44,L5:68,L6:90,L7:100 }, red_flag: { ebScore: 4, totalScore: 40, staleDays: 30 } }}
     />
   );

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { STAGES } from '@/lib/constants';
-import type { Deal, Profile, Settings, StageId, Scores } from '@/lib/types';
+import type { Deal, PainPoint, Profile, Settings, StageId, Scores } from '@/lib/types';
 import { fmtMoney, totalScore, redFlag, daysSince, stageIdx } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
@@ -14,15 +14,17 @@ interface Props {
   initialDeals: Deal[];
   profile: Profile;
   allProfiles: Profile[];
+  initialPainPoints: PainPoint[];
   settings: Settings;
 }
 
-export function Dashboard({ initialDeals, profile, allProfiles, settings: initialSettings }: Props) {
+export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoints, settings: initialSettings }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [deals, setDeals] = useState<Deal[]>(initialDeals);
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [profiles, setProfiles] = useState<Profile[]>(allProfiles);
+  const [painPoints, setPainPoints] = useState<PainPoint[]>(initialPainPoints);
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -39,7 +41,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
       .on('postgres_changes', { event: '*', schema: 'public', table: 'score_notes' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stage_checklist' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => refetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deal_questions' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => refetchProfiles())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pain_points' }, () => refetchPainPoints())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,7 +55,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
     refetchRef.current = window.setTimeout(async () => {
       const { data } = await supabase
         .from('deals')
-        .select('*, scores(*), score_notes(*), stage_checklist(*), comments(id, deal_id, author_id, body, is_system, created_at), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)')
+        .select('*, scores(*), score_notes(*), stage_checklist(*), deal_questions(*), comments(id, deal_id, author_id, body, is_system, created_at), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)')
         .order('last_updated', { ascending: false });
       if (data) setDeals(data as Deal[]);
     }, 250);
@@ -60,6 +64,11 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
   const refetchProfiles = useCallback(async () => {
     const { data } = await supabase.from('profiles').select('*').order('full_name');
     if (data) setProfiles(data as Profile[]);
+  }, [supabase]);
+
+  const refetchPainPoints = useCallback(async () => {
+    const { data } = await supabase.from('pain_points').select('*').eq('is_active', true).order('order_idx');
+    if (data) setPainPoints(data as PainPoint[]);
   }, [supabase]);
 
   // --- Derived ---
@@ -200,6 +209,38 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
     await supabase.from('profiles').delete().eq('id', id);
   }
 
+  async function toggleQuestion(dealId: string, questionKey: string) {
+    const deal = deals.find(d => d.id === dealId); if (!deal) return;
+    const existing = deal.deal_questions?.find(q => q.question_key === questionKey);
+    if (existing?.answered) {
+      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, deal_questions: (d.deal_questions ?? []).filter(q => q.question_key !== questionKey) } : d));
+      await supabase.from('deal_questions').delete().eq('deal_id', dealId).eq('question_key', questionKey);
+    } else {
+      const item = { deal_id: dealId, question_key: questionKey, answered: true, note: '', asked_at: new Date().toISOString() };
+      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, deal_questions: [...(d.deal_questions ?? []), item] } : d));
+      await supabase.from('deal_questions').upsert({ deal_id: dealId, question_key: questionKey, answered: true, asked_by: profile.id });
+    }
+  }
+
+  async function addPain(input: { pain: string; product: string; pitch: string; tiers: string }) {
+    const maxIdx = Math.max(0, ...painPoints.map(p => p.order_idx));
+    const { data, error } = await supabase.from('pain_points')
+      .insert({ ...input, order_idx: maxIdx + 10, is_active: true, created_by: profile.id })
+      .select().single();
+    if (error) throw error;
+    if (data) setPainPoints(ps => [...ps, data as PainPoint].sort((a, b) => a.order_idx - b.order_idx));
+  }
+
+  async function updatePain(id: string, patch: Partial<PainPoint>) {
+    setPainPoints(ps => ps.map(p => p.id === id ? { ...p, ...patch } : p));
+    await supabase.from('pain_points').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+  }
+
+  async function removePain(id: string) {
+    setPainPoints(ps => ps.filter(p => p.id !== id));
+    await supabase.from('pain_points').delete().eq('id', id);
+  }
+
   // --- Render ---
   return (
     <>
@@ -333,11 +374,13 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
           settings={settings}
           allProfiles={profiles}
           profile={profile}
+          painPoints={painPoints}
           onClose={() => setCurrentDealId(null)}
           onPatchDeal={(patch) => patchDeal(currentDeal.id, patch)}
           onPatchScore={(patch) => patchScore(currentDeal.id, patch)}
           onUpsertNote={(field, patch) => upsertNote(currentDeal.id, field, patch)}
           onToggleChecklist={(key) => toggleChecklist(currentDeal.id, key)}
+          onToggleQuestion={(key) => toggleQuestion(currentDeal.id, key)}
           onAddComment={(body) => addComment(currentDeal.id, body)}
           onAdvance={() => advanceStage(currentDeal.id)}
           onDelete={() => deleteDeal(currentDeal.id)}
@@ -358,11 +401,15 @@ export function Dashboard({ initialDeals, profile, allProfiles, settings: initia
           settings={settings}
           profile={profile}
           allProfiles={profiles}
+          painPoints={painPoints}
           onClose={() => setShowSettings(false)}
           onSave={saveSettings}
           onAddMember={addMember}
           onUpdateMember={updateMember}
           onRemoveMember={removeMember}
+          onAddPain={addPain}
+          onUpdatePain={updatePain}
+          onRemovePain={removePain}
         />
       )}
     </>

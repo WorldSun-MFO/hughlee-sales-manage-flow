@@ -38,6 +38,24 @@ export interface Comment {
   created_at: string;
 }
 
+export interface DealQuestion {
+  deal_id: string;
+  question_key: string;
+  answered: boolean;
+  note: string;
+  asked_at: string;
+}
+
+export interface PainPoint {
+  id: string;
+  pain: string;
+  product: string;
+  pitch: string;
+  tiers: string;
+  order_idx: number;
+  is_active: boolean;
+}
+
 export interface Deal {
   id: string;
   name: string;
@@ -53,6 +71,7 @@ export interface Deal {
   score_notes?: ScoreNote[];
   stage_checklist?: ChecklistItem[];
   comments?: Comment[];
+  deal_questions?: DealQuestion[];
   rm?: Profile | null;
 }
 
