@@ -337,10 +337,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           </select>
           <select value={filter.tier} onChange={e => setFilter(f => ({ ...f, tier: e.target.value as Tier | '' }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
             <option value="">所有等級</option>
-            <option value="SSS">SSS 旗艦</option>
-            <option value="S">S 高階</option>
-            <option value="A">A 中階</option>
-            <option value="C">C 基礎</option>
+            {tierCfg.map(t => <option key={t.key} value={t.key}>{t.key} {t.name}</option>)}
           </select>
           <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
             <input type="checkbox" checked={filter.overdue} onChange={e => setFilter(f => ({ ...f, overdue: e.target.checked }))} className="accent-amber-600" />

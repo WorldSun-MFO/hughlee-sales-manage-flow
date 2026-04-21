@@ -1,6 +1,6 @@
 export type StageId = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7';
 
-export type Tier = 'SSS' | 'S' | 'A' | 'C';
+export type Tier = 'SSS' | 'S' | 'A' | 'B' | 'C';
 
 export interface TierConfigItem {
   key: Tier;

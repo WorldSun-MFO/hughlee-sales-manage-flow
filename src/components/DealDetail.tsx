@@ -174,13 +174,13 @@ export function DealDetail({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-xs text-slate-500">客戶等級 <span className="text-slate-400">(建議 {suggestedTier} 依 AUM)</span></span>
-                <div className="mt-1 flex gap-1">
-                  {(['SSS','S','A','C'] as Tier[]).map(t => (
+                <div className="mt-1 flex gap-1 flex-wrap">
+                  {tierCfg.map(tc => (
                     <button
-                      key={t}
-                      onClick={() => onPatchDeal({ tier: t })}
-                      className={`flex-1 text-xs px-2 py-1.5 rounded font-bold transition ${deal.tier === t ? TIER_STYLES[t] : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-                    >{t}</button>
+                      key={tc.key}
+                      onClick={() => onPatchDeal({ tier: tc.key })}
+                      className={`flex-1 min-w-[48px] text-xs px-2 py-1.5 rounded font-bold transition ${deal.tier === tc.key ? TIER_STYLES[tc.key] : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+                    >{tc.key}</button>
                   ))}
                 </div>
                 {deal.tier && (
