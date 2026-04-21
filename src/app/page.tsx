@@ -1,0 +1,52 @@
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { Dashboard } from '@/components/Dashboard';
+import type { Deal, Profile, Settings } from '@/lib/types';
+
+export const dynamic = 'force-dynamic';
+
+export default async function Home() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single<Profile>();
+
+  const { data: deals } = await supabase
+    .from('deals')
+    .select(`
+      *,
+      scores(*),
+      score_notes(*),
+      stage_checklist(*),
+      comments(id, deal_id, author_id, body, is_system, created_at),
+      rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)
+    `)
+    .order('last_updated', { ascending: false })
+    .returns<Deal[]>();
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('full_name')
+    .returns<Profile[]>();
+
+  const { data: settings } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('id', 1)
+    .single<Settings>();
+
+  return (
+    <Dashboard
+      initialDeals={deals ?? []}
+      profile={profile!}
+      allProfiles={profiles ?? []}
+      settings={settings ?? { id: 1, stage_probs: { L1:7,L2:13,L3:20,L4:44,L5:68,L6:90,L7:100 }, red_flag: { ebScore: 4, totalScore: 40, staleDays: 30 } }}
+    />
+  );
+}

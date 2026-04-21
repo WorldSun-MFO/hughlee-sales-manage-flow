@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body { height: 100%; }
+  body { @apply bg-slate-50 text-slate-800; }
+}
+
+@layer components {
+  .stage-L1 { background: #e2e8f0; color: #475569; }
+  .stage-L2 { background: #cbd5e1; color: #334155; }
+  .stage-L3 { background: #bae6fd; color: #075985; }
+  .stage-L4 { background: #93c5fd; color: #1e40af; }
+  .stage-L5 { background: #818cf8; color: #fff; }
+  .stage-L6 { background: #6366f1; color: #fff; }
+  .stage-L7 { background: #4338ca; color: #fff; }
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
