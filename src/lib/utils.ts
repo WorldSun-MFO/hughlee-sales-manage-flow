@@ -82,3 +82,88 @@ export function contactOverdue(deal: Deal, tiers: TierConfigItem[]): { status: '
   else if (deltaDays >= -3) status = 'due_soon';
   return { status, daysSince, interval: tierCfg.contact_days, deltaDays };
 }
+
+export type PriorityTone = 'rose' | 'amber' | 'orange';
+
+export interface PriorityReason {
+  icon: string;
+  text: string;
+  tone: PriorityTone;
+  weight: number;
+}
+
+export function priorityReason(deal: Deal, settings: Settings, tiers: TierConfigItem[]): PriorityReason | null {
+  if (deal.stage === 'L7') return null;
+  const flag = redFlag(deal, settings);
+  if (flag) return { icon: '🚩', text: flag, tone: 'rose', weight: 1000 };
+
+  const ci = contactOverdue(deal, tiers);
+  if (ci?.status === 'overdue') return { icon: '⚠️', text: `已逾期 ${ci.deltaDays} 天未聯繫`, tone: 'amber', weight: 500 + ci.deltaDays * 5 };
+
+  const staleDays = daysSince(deal.last_updated);
+  if (['L4','L5','L6'].includes(deal.stage) && staleDays > 14) {
+    return { icon: '📌', text: `${deal.stage} 卡 ${staleDays} 天沒動`, tone: 'orange', weight: 200 + staleDays };
+  }
+
+  if (ci?.status === 'due_soon') return { icon: '🔔', text: `${Math.abs(ci.deltaDays)} 天內需聯繫`, tone: 'amber', weight: 100 };
+
+  return null;
+}
+
+export function urgencyScore(deal: Deal, settings: Settings, tiers: TierConfigItem[]): number {
+  const reason = priorityReason(deal, settings, tiers);
+  if (!reason) return 0;
+  const tierWeight: Record<string, number> = { SSS: 50, S: 30, A: 20, B: 10, C: 5 };
+  return reason.weight + (tierWeight[deal.tier ?? ''] ?? 0);
+}
+
+// CSV export — 把 deals 轉成可匯入 Google Sheets / Excel 的 CSV 字串
+export function dealsToCSV(deals: Deal[], settings: Settings, tiers: TierConfigItem[]): string {
+  const header = [
+    '客戶名','RM','等級','階段','階段機率(%)','AUM (USD)','MEDDIC 總分',
+    '建議商品','最後聯繫','聯繫狀態','紅旗','下一步','首次接觸','最近更新',
+  ];
+
+  const rows = deals.map(d => {
+    const ci = contactOverdue(d, tiers);
+    const contactStatus = ci
+      ? (ci.status === 'overdue' ? `逾期 ${ci.deltaDays} 天`
+        : ci.status === 'due_soon' ? `${Math.abs(ci.deltaDays)} 天內需聯繫`
+        : `已聯繫 ${ci.daysSince} 天`)
+      : '—';
+    return [
+      d.name,
+      d.rm?.full_name ?? '—',
+      d.tier ?? '—',
+      d.stage,
+      String(settings.stage_probs[d.stage] ?? 0),
+      String(Number(d.aum_usd ?? 0)),
+      String(totalScore(d)),
+      d.product ?? '',
+      d.last_contact_at ? d.last_contact_at.slice(0, 10) : '—',
+      contactStatus,
+      redFlag(d, settings) ?? '',
+      d.next_step ?? '',
+      d.first_contact,
+      d.last_updated.slice(0, 10),
+    ];
+  });
+
+  // CSV escape:把含逗號/引號/換行的欄位用雙引號包住
+  const esc = (s: string) => {
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  return [header, ...rows].map(row => row.map(esc).join(',')).join('\n');
+}
+
+export function downloadCSV(filename: string, csv: string) {
+  // Prepend BOM so Excel / Google Sheets auto-detect UTF-8
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

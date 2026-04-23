@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { STAGES, TIER_STYLES } from '@/lib/constants';
 import type { Deal, PainPoint, Profile, Settings, StageId, Scores, Tier } from '@/lib/types';
-import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum } from '@/lib/utils';
+import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
 import { SettingsModal } from './SettingsModal';
@@ -28,6 +28,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [focusCollapsed, setFocusCollapsed] = useState(false);
   const [filter, setFilter] = useState({ rm: '', stage: '' as StageId | '', tier: '' as Tier | '', redFlag: false, overdue: false, search: '', sort: 'updated' as 'updated' | 'aum' | 'score' | 'stage' });
   const tierCfg = settings.tier_config?.tiers ?? [];
 
@@ -81,6 +82,15 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const activeDealsCount = deals.filter(d => d.stage !== 'L7').length;
   const overdueCount = deals.filter(d => d.stage !== 'L7' && contactOverdue(d, tierCfg)?.status === 'overdue').length;
   const dueSoonCount = deals.filter(d => d.stage !== 'L7' && contactOverdue(d, tierCfg)?.status === 'due_soon').length;
+
+  const priorityDeals = useMemo(() => {
+    return deals
+      .map(d => ({ deal: d, score: urgencyScore(d, settings, tierCfg) }))
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(x => x.deal);
+  }, [deals, settings, tierCfg]);
 
   const filteredDeals = useMemo(() => {
     const list = deals.filter(d => {
@@ -248,6 +258,18 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('pain_points').delete().eq('id', id);
   }
 
+  async function quickLogContact(dealId: string) {
+    const nowIso = new Date().toISOString();
+    await patchDeal(dealId, { last_contact_at: nowIso });
+    await addComment(dealId, `📞 已記錄本次聯繫`);
+  }
+
+  function handleExportCSV() {
+    const csv = dealsToCSV(deals, settings, tierCfg);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCSV(`wosheng-pipeline-${date}.csv`, csv);
+  }
+
   // --- Render ---
   return (
     <>
@@ -267,6 +289,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
             ＋ 新增案件
           </button>
           <button onClick={() => setShowNewDeal(true)} className="sm:hidden inline-flex items-center justify-center w-9 h-9 bg-indigo-600 text-white rounded-lg font-bold">＋</button>
+          <button onClick={handleExportCSV} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="匯出 CSV(可直接貼進 Google Sheets)">📥</button>
           <button onClick={() => setShowSettings(true)} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="設定">⚙︎</button>
           <button onClick={signOut} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="登出">⏻</button>
         </div>
@@ -296,6 +319,72 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
               highlight={filter.redFlag}
             />
           </button>
+        </section>
+
+        {/* 🎯 今日追蹤清單 — 一覽現在該處理的客戶 */}
+        <section className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-sm flex items-center gap-2">
+              🎯 今日追蹤清單
+              <span className="text-xs font-normal text-slate-400">({priorityDeals.length} 件)</span>
+            </h2>
+            <button onClick={() => setFocusCollapsed(v => !v)} className="text-xs text-slate-400 hover:text-slate-600">
+              {focusCollapsed ? '展開 ▼' : '收起 ▲'}
+            </button>
+          </div>
+          {!focusCollapsed && (
+            <>
+              {priorityDeals.length === 0 && (
+                <div className="text-center py-6 text-emerald-600 text-sm font-medium">
+                  🎉 沒有待追蹤的案件,全部健康!
+                </div>
+              )}
+              <div className="space-y-1.5">
+                {priorityDeals.map(d => {
+                  const reason = priorityReason(d, settings, tierCfg);
+                  if (!reason) return null;
+                  const toneClass = reason.tone === 'rose' ? 'text-rose-600' : reason.tone === 'orange' ? 'text-orange-600' : 'text-amber-600';
+                  return (
+                    <div key={d.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 hover:bg-slate-50">
+                      <div className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_STYLES[d.tier ?? ''] ?? 'bg-slate-200'}`}>
+                        {d.tier ?? '?'}
+                      </div>
+                      <div className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded stage-${d.stage}`}>
+                        {d.stage}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-sm truncate">{d.name}</span>
+                          <span className="text-xs text-slate-400">{d.rm?.full_name ?? '—'}</span>
+                          <span className="text-xs text-slate-400">· {fmtMoney(Number(d.aum_usd))}</span>
+                        </div>
+                        <div className={`text-xs ${toneClass} font-medium`}>{reason.icon} {reason.text}</div>
+                        {d.next_step && (
+                          <div className="text-[11px] text-slate-500 mt-0.5 truncate">👉 {d.next_step}</div>
+                        )}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={() => quickLogContact(d.id)}
+                          title="標記剛聯繫過,重新計算週期"
+                          className="text-[11px] px-2 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 whitespace-nowrap"
+                        >📞 剛聯繫</button>
+                        <button
+                          onClick={() => setCurrentDealId(d.id)}
+                          className="text-[11px] px-2 py-1 border border-slate-200 rounded hover:bg-white whitespace-nowrap"
+                        >詳情</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {priorityDeals.length > 0 && (
+                <div className="mt-2 text-[11px] text-slate-400">
+                  優先度規則:紅旗 &gt; 逾期聯繫 &gt; L4+ 卡關 &gt; 即將到期;以 tier 加權
+                </div>
+              )}
+            </>
+          )}
         </section>
 
         <section className="bg-white rounded-xl border border-slate-200 p-4">
