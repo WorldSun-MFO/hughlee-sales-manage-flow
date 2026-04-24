@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { STAGES, TIER_STYLES } from '@/lib/constants';
-import type { Deal, PainPoint, Profile, Settings, StageId, Scores, Tier } from '@/lib/types';
+import type { Deal, DealPlan, PainPoint, Profile, Settings, StageId, Scores, Tier } from '@/lib/types';
 import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
@@ -270,6 +270,67 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     downloadCSV(`wosheng-pipeline-${date}.csv`, csv);
   }
 
+  // ===== AI 功能 =====
+  async function applyAISuggestion(dealId: string, patch: {
+    scores?: Partial<Scores>;
+    next_step?: string | null;
+    comment?: string;
+    questions_to_check?: string[];
+    stage?: StageId;
+  }) {
+    if (patch.scores && Object.keys(patch.scores).length > 0) {
+      await patchScore(dealId, patch.scores);
+    }
+    const dealPatch: Partial<Deal> = {};
+    if (patch.next_step !== undefined) dealPatch.next_step = patch.next_step;
+    if (patch.stage) dealPatch.stage = patch.stage;
+    if (Object.keys(dealPatch).length > 0) {
+      await patchDeal(dealId, dealPatch);
+    }
+    if (patch.comment) {
+      await addComment(dealId, `🤖 ${patch.comment}`);
+    }
+    if (patch.questions_to_check && patch.questions_to_check.length > 0) {
+      setDeals(prev => prev.map(d => {
+        if (d.id !== dealId) return d;
+        const existing = new Set((d.deal_questions ?? []).map(q => q.question_key));
+        const newOnes = patch.questions_to_check!.filter(k => !existing.has(k)).map(k => ({
+          deal_id: dealId, question_key: k, answered: true, note: '', asked_at: new Date().toISOString(),
+        }));
+        return { ...d, deal_questions: [...(d.deal_questions ?? []), ...newOnes] };
+      }));
+      const rows = patch.questions_to_check.map(k => ({
+        deal_id: dealId, question_key: k, answered: true, asked_by: profile.id,
+      }));
+      await supabase.from('deal_questions').upsert(rows);
+    }
+  }
+
+  async function savePlan(dealId: string, plan: DealPlan, targetDate: string) {
+    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, plan, target_close_date: targetDate } : d));
+    await supabase.from('deals').update({
+      plan: plan as unknown as Record<string, unknown>,
+      target_close_date: targetDate,
+      last_updated: new Date().toISOString(),
+    }).eq('id', dealId);
+    await addComment(dealId, `🎯 AI 產生成交路徑 (目標 ${targetDate},可行性 ${plan.feasibility})`);
+  }
+
+  async function togglePlanStep(dealId: string, stepId: string) {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal?.plan) return;
+    const newSteps = deal.plan.steps.map(s => s.id === stepId
+      ? { ...s, completed: !s.completed, completed_at: !s.completed ? new Date().toISOString() : null }
+      : s
+    );
+    const newPlan = { ...deal.plan, steps: newSteps };
+    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, plan: newPlan } : d));
+    await supabase.from('deals').update({
+      plan: newPlan as unknown as Record<string, unknown>,
+      last_updated: new Date().toISOString(),
+    }).eq('id', dealId);
+  }
+
   // --- Render ---
   return (
     <>
@@ -517,6 +578,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           onAddComment={(body) => addComment(currentDeal.id, body)}
           onAdvance={() => advanceStage(currentDeal.id)}
           onDelete={() => deleteDeal(currentDeal.id)}
+          onApplyAISuggestion={(patch) => applyAISuggestion(currentDeal.id, patch)}
+          onSavePlan={(plan, td) => savePlan(currentDeal.id, plan, td)}
+          onTogglePlanStep={(stepId) => togglePlanStep(currentDeal.id, stepId)}
         />
       )}
 

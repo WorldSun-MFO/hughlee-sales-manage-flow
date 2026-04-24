@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { STAGES, MEDDIC, CHECKLIST, STAGE_PROMPTS, QUESTION_BANK, TIER_STYLES } from '@/lib/constants';
-import type { Deal, PainPoint, Profile, Scores, Settings, Tier } from '@/lib/types';
+import type { Deal, DealPlan, PainPoint, Profile, Scores, Settings, StageId, Tier } from '@/lib/types';
 import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage, contactOverdue, contactDaysSince, getTierFromAum } from '@/lib/utils';
+import { AIChatModal } from './AIChatModal';
+import { PlanModal } from './PlanModal';
 
 interface Props {
   deal: Deal;
@@ -20,13 +22,25 @@ interface Props {
   onAddComment: (body: string) => void;
   onAdvance: () => void;
   onDelete: () => void;
+  onApplyAISuggestion: (patch: {
+    scores?: Partial<Scores>;
+    next_step?: string | null;
+    comment?: string;
+    questions_to_check?: string[];
+    stage?: StageId;
+  }) => Promise<void>;
+  onSavePlan: (plan: DealPlan, targetDate: string) => Promise<void>;
+  onTogglePlanStep: (stepId: string) => Promise<void>;
 }
 
 export function DealDetail({
   deal, settings, allProfiles, profile, painPoints, onClose,
-  onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onToggleQuestion, onAddComment, onAdvance, onDelete
+  onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onToggleQuestion, onAddComment, onAdvance, onDelete,
+  onApplyAISuggestion, onSavePlan, onTogglePlanStep,
 }: Props) {
   const [newComment, setNewComment] = useState('');
+  const [showAIChat, setShowAIChat] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
   const scores = deal.scores ?? { m:0, e:0, d1:0, d2:0, p:0, i:0, c1:0, c2:0 };
   const total = totalScore(deal);
   const flag = redFlag(deal, settings);
@@ -71,6 +85,16 @@ export function DealDetail({
               {total}/80 · 建議 {recommendStage(total)} {flag && <>· 🚩 {flag}</>}
             </div>
           </div>
+          <button
+            onClick={() => setShowAIChat(true)}
+            title="AI 助手 — 把對話內容轉成結構化更新"
+            className="h-9 px-2.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-semibold hover:shadow"
+          >🤖 AI 助手</button>
+          <button
+            onClick={() => setShowPlan(true)}
+            title="AI 規劃成交路徑"
+            className="h-9 px-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-indigo-600 text-white text-xs font-semibold hover:shadow"
+          >🎯 規劃</button>
           <button onClick={onClose} className="w-9 h-9 rounded-lg hover:bg-slate-100 text-slate-500">✕</button>
         </div>
 
@@ -217,6 +241,66 @@ export function DealDetail({
               </div>
             </div>
           </div>
+
+          {/* AI 產出的成交路徑(若已儲存) */}
+          {deal.plan && (
+            <div className="border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white rounded-lg p-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    🎯 成交路徑(目標 {deal.plan.target_date})
+                    {deal.plan.feasibility === 'high' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-normal">可行性高</span>}
+                    {deal.plan.feasibility === 'medium' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-normal">可行性中</span>}
+                    {deal.plan.feasibility === 'low' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-normal">可行性低</span>}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    已完成 {deal.plan.steps.filter(s => s.completed).length} / {deal.plan.steps.length} 步 · AI 產於 {deal.plan.generated_at.slice(0, 10)}
+                  </div>
+                </div>
+                <button onClick={() => setShowPlan(true)} className="text-xs text-indigo-600 hover:underline whitespace-nowrap">重新規劃</button>
+              </div>
+              <div className="space-y-1">
+                {deal.plan.steps.map((step, i) => (
+                  <label key={step.id} className="flex items-start gap-2 p-1.5 rounded hover:bg-white cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={step.completed}
+                      onChange={() => onTogglePlanStep(step.id)}
+                      className="mt-0.5 accent-emerald-600"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm ${step.completed ? 'line-through text-slate-400' : 'font-medium'}`}>
+                        <span className="text-xs text-slate-400 mr-1">{i + 1}.</span>
+                        {step.title}
+                        <span className="text-xs text-slate-400 ml-2">{step.target_date} · {step.stage_transition}</span>
+                      </div>
+                      {!step.completed && step.focus.length > 0 && (
+                        <details className="mt-0.5 text-xs">
+                          <summary className="cursor-pointer text-indigo-600 hover:text-indigo-800">查看動作與話術</summary>
+                          <div className="mt-1 pl-2 space-y-1 text-slate-700">
+                            {step.focus.length > 0 && (
+                              <div><span className="font-semibold">🎯 動作:</span> {step.focus.join(' / ')}</div>
+                            )}
+                            {step.talking_points.length > 0 && (
+                              <div>
+                                <span className="font-semibold">💬 話術:</span>
+                                <ul className="ml-3 list-disc">
+                                  {step.talking_points.map((t, j) => <li key={j}>「{t}」</li>)}
+                                </ul>
+                              </div>
+                            )}
+                            {step.risks.length > 0 && (
+                              <div className="text-rose-600"><span className="font-semibold">⚠️ 風險:</span> {step.risks.join(' / ')}</div>
+                            )}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Stage control */}
           <div>
@@ -409,6 +493,21 @@ export function DealDetail({
           </div>
         </div>
       </div>
+
+      {showAIChat && (
+        <AIChatModal
+          deal={deal}
+          onClose={() => setShowAIChat(false)}
+          onApply={async (patch) => { await onApplyAISuggestion(patch); setShowAIChat(false); }}
+        />
+      )}
+      {showPlan && (
+        <PlanModal
+          deal={deal}
+          onClose={() => setShowPlan(false)}
+          onSavePlan={async (plan, td) => { await onSavePlan(plan, td); setShowPlan(false); }}
+        />
+      )}
     </>
   );
 }

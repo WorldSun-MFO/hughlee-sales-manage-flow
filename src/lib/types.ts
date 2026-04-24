@@ -77,6 +77,8 @@ export interface Deal {
   tier: Tier | null;
   stage: StageId;
   next_step: string | null;
+  target_close_date: string | null;
+  plan: DealPlan | null;
   created_at: string;
   scores?: Scores;
   score_notes?: ScoreNote[];
@@ -91,4 +93,39 @@ export interface Settings {
   stage_probs: Record<StageId, number>;
   red_flag: { ebScore: number; totalScore: number; staleDays: number };
   tier_config: { tiers: TierConfigItem[] };
+}
+
+// ====== AI Plan types ======
+export interface PlanStep {
+  id: string;
+  title: string;
+  target_date: string;
+  stage_transition: string;
+  focus: string[];
+  talking_points: string[];
+  risks: string[];
+  completed: boolean;
+  completed_at: string | null;
+}
+
+export interface DealPlan {
+  target_date: string;
+  generated_at: string;
+  model: string;
+  overview: string;
+  feasibility: 'high' | 'medium' | 'low';
+  feasibility_reason: string;
+  top_risks: string[];
+  steps: PlanStep[];
+}
+
+// Feature A — AI 解析互動的回應
+export interface ParseInteractionSuggestion {
+  summary: string;
+  score_updates: Array<{ field: string; old: number; new: number; reason: string }>;
+  new_comment: string;
+  next_step_update: string | null;
+  question_checkoffs: string[];
+  stage_suggestion: StageId | null;
+  ask_back: string[];
 }
