@@ -1,6 +1,8 @@
-# 沃勝 MEDDIC Pipeline
+# WORLDSUN MEDDIC Pipeline
 
-> 網頁版 MEDDPICC 資格評分 + Pipeline Tracker,給 10 人銷售團隊共用,手機可用,即時同步。
+> **沃勝聯合家族辦公室** 內部銷售管理系統。
+>
+> 網頁版 MEDDPICC 資格評分 + Pipeline Tracker + AI 助手 + AI 路徑規劃,給 10 人銷售團隊共用,手機可用,即時同步。
 
 ## 特色
 

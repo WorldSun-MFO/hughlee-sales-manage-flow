@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: '沃勝 MEDDIC Pipeline',
-  description: 'MEDDPICC Qualification & Funnel for WS MFO',
+  title: 'WORLDSUN MEDDIC Pipeline',
+  description: 'MEDDPICC Qualification & Funnel for WORLDSUN 沃勝聯合家族辦公室',
 };
 
 export const viewport: Viewport = {

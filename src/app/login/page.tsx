@@ -27,8 +27,9 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-indigo-50 to-slate-50">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-8 text-center">
         <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white font-bold text-2xl flex items-center justify-center mx-auto">沃</div>
-        <h1 className="mt-5 font-semibold text-lg">沃勝 MEDDIC Pipeline</h1>
-        <p className="mt-1 text-sm text-slate-500">請用公司 Google 帳號登入</p>
+        <h1 className="mt-5 font-semibold text-lg">WORLDSUN MEDDIC Pipeline</h1>
+        <p className="mt-0.5 text-xs text-slate-400">沃勝聯合家族辦公室</p>
+        <p className="mt-3 text-sm text-slate-500">請用公司 Google 帳號登入</p>
         <button
           onClick={signInWithGoogle}
           disabled={loading}

@@ -267,7 +267,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   function handleExportCSV() {
     const csv = dealsToCSV(deals, settings, tierCfg);
     const date = new Date().toISOString().slice(0, 10);
-    downloadCSV(`wosheng-pipeline-${date}.csv`, csv);
+    downloadCSV(`worldsun-pipeline-${date}.csv`, csv);
   }
 
   // ===== AI 功能 =====
@@ -339,7 +339,8 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">沃</div>
             <div>
-              <div className="font-semibold text-sm leading-tight">沃勝 MEDDIC Pipeline</div>
+              <div className="font-semibold text-sm leading-tight">WORLDSUN MEDDIC Pipeline</div>
+              <div className="text-[10px] text-slate-400 leading-tight">沃勝聯合家族辦公室</div>
               <div className="text-xs text-slate-500 leading-tight">
                 {profile.full_name} · {profile.role === 'manager' ? '管理員 (看全部)' : 'RM (看自己)'}
               </div>

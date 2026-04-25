@@ -50,7 +50,7 @@ export const CHECKLIST: Record<StageId, Array<{ key: string; label: string }>> =
     { key: 'l3_e',  label: 'E:知道誰是真正簽字人,是否需家族/董事會同意' },
     { key: 'l3_dc', label: 'DC:客戶前 3 大決策標準已排序' },
     { key: 'l3_dp', label: 'DP:預估決策路徑與時程已問清' },
-    { key: 'l3_i',  label: 'I:至少 2 個痛點已對應到沃勝商品' },
+    { key: 'l3_i',  label: 'I:至少 2 個痛點已對應到 WORLDSUN 商品' },
     { key: 'l3_c',  label: 'C:至少一位 Champion 已辨識' },
   ],
   L4: [

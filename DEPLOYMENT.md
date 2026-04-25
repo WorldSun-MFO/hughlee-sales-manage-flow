@@ -1,4 +1,5 @@
-# 沃勝 MEDDIC Pipeline — 部署手冊
+# WORLDSUN MEDDIC Pipeline — 部署手冊
+> 沃勝聯合家族辦公室
 
 預估時間:**20–30 分鐘**。完成後會有一個雲端網址,10 人團隊用 Google 帳號登入即可使用,資料即時同步、手機可用。
 

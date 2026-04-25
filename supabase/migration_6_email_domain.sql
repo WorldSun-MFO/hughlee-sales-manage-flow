@@ -11,7 +11,7 @@ create or replace function public.restrict_email_domain() returns trigger
   language plpgsql security definer set search_path = public as $$
 begin
   if new.email is null or new.email !~* '@wsgfo\.com$' then
-    raise exception '此系統僅限沃勝 (@wsgfo.com) 員工使用。您的 email % 未獲授權。', new.email
+    raise exception '此系統僅限 WORLDSUN 沃勝聯合家族辦公室 (@wsgfo.com) 員工使用。您的 email % 未獲授權。', new.email
       using errcode = '42501';
   end if;
   return new;
