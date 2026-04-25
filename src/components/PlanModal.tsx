@@ -27,7 +27,17 @@ export function PlanModal({ deal, onClose, onSavePlan }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dealId: deal.id, targetCloseDate: targetDate, extraContext: extraContext.trim() || undefined }),
       });
-      const json = await res.json();
+      // 防呆:如果回應不是 JSON(例如 Vercel timeout 回 HTML),給更明確的錯誤訊息
+      const raw = await res.text();
+      let json: { data?: DealPlan; error?: string };
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        if (res.status === 504 || res.status === 408) {
+          throw new Error('AI 規劃超時(>60 秒),請重試或縮短目標期程');
+        }
+        throw new Error(`回應格式錯誤(HTTP ${res.status}):${raw.slice(0, 200)}`);
+      }
       if (!res.ok) throw new Error(json.error || '產生計畫失敗');
       setPlan(json.data as DealPlan);
     } catch (err) {

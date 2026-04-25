@@ -66,9 +66,10 @@ ${JSON.stringify(GENERATE_PLAN_JSON_SCHEMA, null, 2)}
   const client = getAnthropic();
   try {
     // 大 max_tokens 必須用 streaming(SDK 強制要求),否則會抛 "Streaming is required" 錯
+    // 16K 已足夠:Plan JSON 輸出 ~3K + adaptive thinking ~10K
     const stream = client.messages.stream({
       model: AI_MODEL,
-      max_tokens: 32000,                          // 4.7 adaptive thinking + 完整成交路徑需要 headroom
+      max_tokens: 16000,
       // SDK 0.68 型別還沒納入 'adaptive',cast 繞過(API 已 GA 接受)
       thinking: { type: 'adaptive' } as unknown as { type: 'enabled'; budget_tokens: number },
       system: [
