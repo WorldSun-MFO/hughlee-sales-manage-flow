@@ -65,7 +65,8 @@ ${JSON.stringify(GENERATE_PLAN_JSON_SCHEMA, null, 2)}
 
   const client = getAnthropic();
   try {
-    const response = await client.messages.create({
+    // 大 max_tokens 必須用 streaming(SDK 強制要求),否則會抛 "Streaming is required" 錯
+    const stream = client.messages.stream({
       model: AI_MODEL,
       max_tokens: 32000,                          // 4.7 adaptive thinking + 完整成交路徑需要 headroom
       // SDK 0.68 型別還沒納入 'adaptive',cast 繞過(API 已 GA 接受)
@@ -79,6 +80,7 @@ ${JSON.stringify(GENERATE_PLAN_JSON_SCHEMA, null, 2)}
       ],
       messages: [{ role: 'user', content: userMessage }],
     });
+    const response = await stream.finalMessage();
 
     const textBlock = response.content.find(b => b.type === 'text');
     if (!textBlock || textBlock.type !== 'text') {
