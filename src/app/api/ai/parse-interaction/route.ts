@@ -5,7 +5,7 @@ import { PLAYBOOK_KNOWLEDGE } from '@/lib/anthropic/playbook';
 import { ParseInteractionResponseSchema, PARSE_INTERACTION_JSON_SCHEMA } from '@/lib/anthropic/schemas';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;                  // Vercel Pro 上限
 
 interface ReqBody {
   dealId: string;
