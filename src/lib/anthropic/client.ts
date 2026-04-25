@@ -13,5 +13,6 @@ export function getAnthropic(): Anthropic {
   return _client;
 }
 
-// 預設模型 — Sonnet 4.6 在中文理解 + 結構化輸出上表現最好,cost/quality 平衡
-export const AI_MODEL = 'claude-sonnet-4-6';
+// Opus 4.7:最強的推理 + 中文 + 結構化輸出。適合 MFO 銷售策略這種需要深度判斷的場景。
+// 搭配 adaptive thinking 讓模型自行決定推理深度,effort 預設 'high'。
+export const AI_MODEL = 'claude-opus-4-7';

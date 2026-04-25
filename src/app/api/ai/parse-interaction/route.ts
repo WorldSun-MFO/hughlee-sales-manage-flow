@@ -54,12 +54,13 @@ ${JSON.stringify(PARSE_INTERACTION_JSON_SCHEMA, null, 2)}
   try {
     const response = await client.messages.create({
       model: AI_MODEL,
-      max_tokens: 4000,
+      max_tokens: 16000,                          // 4.7 adaptive thinking 需要 headroom
+      thinking: { type: 'adaptive' },             // 模型自行決定要不要深度思考
       system: [
         {
           type: 'text',
           text: PLAYBOOK_KNOWLEDGE,
-          cache_control: { type: 'ephemeral' },
+          cache_control: { type: 'ephemeral' },   // Playbook 跨呼叫快取
         },
       ],
       messages: [{ role: 'user', content: userMessage }],

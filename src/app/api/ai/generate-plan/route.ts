@@ -67,7 +67,8 @@ ${JSON.stringify(GENERATE_PLAN_JSON_SCHEMA, null, 2)}
   try {
     const response = await client.messages.create({
       model: AI_MODEL,
-      max_tokens: 6000,
+      max_tokens: 32000,                          // 4.7 adaptive thinking + 完整成交路徑需要 headroom
+      thinking: { type: 'adaptive' },             // 規劃路徑要深度推理
       system: [
         {
           type: 'text',
