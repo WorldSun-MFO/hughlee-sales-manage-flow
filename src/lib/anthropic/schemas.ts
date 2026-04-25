@@ -4,6 +4,66 @@ import { z } from 'zod';
 export const MEDDIC_FIELDS = ['m', 'e', 'd1', 'd2', 'p', 'i', 'c1', 'c2'] as const;
 export const STAGES = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7'] as const;
 
+// ====== Raw JSON Schemas (送給 Anthropic API,讓它強制輸出此結構) ======
+export const PARSE_INTERACTION_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string', description: '一句話總結這次對話的重點' },
+    score_updates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          field: { type: 'string', enum: [...MEDDIC_FIELDS] },
+          old: { type: 'integer', minimum: 0, maximum: 10 },
+          new: { type: 'integer', minimum: 0, maximum: 10 },
+          reason: { type: 'string' },
+        },
+        required: ['field', 'old', 'new', 'reason'],
+        additionalProperties: false,
+      },
+    },
+    new_comment: { type: 'string', description: '要加到註解時間軸的文字摘要' },
+    next_step_update: { type: ['string', 'null'] },
+    question_checkoffs: { type: 'array', items: { type: 'string' } },
+    stage_suggestion: { type: ['string', 'null'], enum: [...STAGES, null] },
+    ask_back: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['summary', 'score_updates', 'new_comment', 'next_step_update', 'question_checkoffs', 'stage_suggestion', 'ask_back'],
+  additionalProperties: false,
+} as const;
+
+export const GENERATE_PLAN_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    overview: { type: 'string', description: '整體策略分析' },
+    feasibility: { type: 'string', enum: ['high', 'medium', 'low'] },
+    feasibility_reason: { type: 'string' },
+    top_risks: { type: 'array', items: { type: 'string' } },
+    steps: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 8,
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          target_date: { type: 'string', description: 'YYYY-MM-DD' },
+          stage_transition: { type: 'string' },
+          focus: { type: 'array', items: { type: 'string' } },
+          talking_points: { type: 'array', items: { type: 'string' } },
+          risks: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['id', 'title', 'target_date', 'stage_transition', 'focus', 'talking_points', 'risks'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['overview', 'feasibility', 'feasibility_reason', 'top_risks', 'steps'],
+  additionalProperties: false,
+} as const;
+
 export const ScoreUpdateSchema = z.object({
   field: z.enum(MEDDIC_FIELDS),
   old: z.number().int().min(0).max(10),

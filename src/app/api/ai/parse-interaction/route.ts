@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAnthropic, AI_MODEL } from '@/lib/anthropic/client';
 import { PLAYBOOK_KNOWLEDGE } from '@/lib/anthropic/playbook';
-import { ParseInteractionResponseSchema } from '@/lib/anthropic/schemas';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { ParseInteractionResponseSchema, PARSE_INTERACTION_JSON_SCHEMA } from '@/lib/anthropic/schemas';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -14,7 +13,6 @@ interface ReqBody {
 }
 
 export async function POST(request: Request) {
-  // 1. 驗證登入 + 抓 deal context
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 });
@@ -31,11 +29,9 @@ export async function POST(request: Request) {
     .single();
 
   if (dealErr || !deal) {
-    return NextResponse.json({ error: '找不到該案件,或無權限存取' }, { status: 404 });
+    return NextResponse.json({ error: '找不到該案件' }, { status: 404 });
   }
 
-  // 2. 組 user message(deal context 精簡 + 本次對話描述)
-  // ⚠️ 不要把變動資料放進 system — 會打破 prompt cache
   const dealContext = compactDealContext(deal);
   const userMessage = `【案件目前狀態】
 ${dealContext}
@@ -43,23 +39,22 @@ ${dealContext}
 【這次與客戶的互動】
 ${body.userText.trim()}
 
-請分析這次互動內容,依 schema 輸出結構化建議。注意:
+請分析這次互動內容,輸出 JSON。注意:
 - 沒有具體證據的分數不要改
 - 若使用者提到新的承諾/動作,update next_step_update
 - question_checkoffs 只勾「這次真的得到答案」的題目
-- 若 MEDDIC 總分或關鍵門檻達到推進條件,stage_suggestion 才給值,否則 null`;
+- 若 MEDDIC 總分達到推進條件,stage_suggestion 才給值,否則 null
 
-  // 3. 呼叫 Claude,system prompt 加 cache_control 做前綴快取
+JSON Schema:
+${JSON.stringify(PARSE_INTERACTION_JSON_SCHEMA, null, 2)}
+
+只回 JSON,不加任何前後說明文字。`;
+
   const client = getAnthropic();
   try {
-    const msg = await client.messages.parse({
+    const response = await client.messages.create({
       model: AI_MODEL,
       max_tokens: 4000,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: 'medium',
-        format: zodOutputFormat(ParseInteractionResponseSchema),
-      },
       system: [
         {
           type: 'text',
@@ -70,20 +65,37 @@ ${body.userText.trim()}
       messages: [{ role: 'user', content: userMessage }],
     });
 
-    const parsed = msg.parsed_output;
-    if (!parsed) {
-      return NextResponse.json({ error: 'AI 解析失敗,未產出有效 JSON' }, { status: 502 });
+    // 抽出文字內容
+    const textBlock = response.content.find(b => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      return NextResponse.json({ error: 'AI 沒有回傳文字內容' }, { status: 502 });
     }
 
-    // usage 資訊:回傳給前端做成本監控用
+    // 解析 JSON(允許 Claude 包在 ```json ... ``` 區塊或前後帶說明文字)
+    const jsonText = extractJSON(textBlock.text);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (e) {
+      console.error('[parse-interaction] JSON parse failed:', jsonText);
+      return NextResponse.json({ error: 'AI 回傳格式錯誤,無法解析 JSON' }, { status: 502 });
+    }
+
+    // 用 Zod 驗證
+    const validated = ParseInteractionResponseSchema.safeParse(parsed);
+    if (!validated.success) {
+      console.error('[parse-interaction] Zod validation failed:', validated.error);
+      return NextResponse.json({ error: 'AI 回傳結構不符:' + validated.error.message }, { status: 502 });
+    }
+
     const usage = {
-      input_tokens: msg.usage.input_tokens,
-      output_tokens: msg.usage.output_tokens,
-      cache_read_input_tokens: msg.usage.cache_read_input_tokens ?? 0,
-      cache_creation_input_tokens: msg.usage.cache_creation_input_tokens ?? 0,
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens,
+      cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+      cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
     };
 
-    return NextResponse.json({ data: parsed, usage });
+    return NextResponse.json({ data: validated.data, usage });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[parse-interaction] Claude error:', message);
@@ -91,7 +103,16 @@ ${body.userText.trim()}
   }
 }
 
-/** 把 deal 濃縮成 AI 能讀懂的精簡 context(只放該模型該看的欄位)。 */
+/** 從 Claude 回應抽出 JSON(處理 ```json ... ``` 包覆與前後文字)。 */
+function extractJSON(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+  if (fenced) return fenced[1].trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return text.trim();
+}
+
 function compactDealContext(deal: Record<string, unknown>): string {
   const scores = deal.scores as Record<string, number> | null;
   const comments = (deal.comments as Array<{ body: string; created_at: string }> | null) ?? [];

@@ -2,16 +2,15 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAnthropic, AI_MODEL } from '@/lib/anthropic/client';
 import { PLAYBOOK_KNOWLEDGE } from '@/lib/anthropic/playbook';
-import { GeneratePlanResponseSchema } from '@/lib/anthropic/schemas';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { GeneratePlanResponseSchema, GENERATE_PLAN_JSON_SCHEMA } from '@/lib/anthropic/schemas';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60; // Vercel Hobby plan 上限
+export const maxDuration = 60;
 
 interface ReqBody {
   dealId: string;
-  targetCloseDate: string; // YYYY-MM-DD
-  extraContext?: string;   // 業務主管的額外指示
+  targetCloseDate: string;
+  extraContext?: string;
 }
 
 export async function POST(request: Request) {
@@ -51,25 +50,24 @@ ${dealContext}
 - 距今天數: ${daysUntil} 天
 ${body.extraContext ? `\n【額外指示】\n${body.extraContext.trim()}` : ''}
 
-請依據目前 MEDDIC 狀態、客戶 tier 對應的聯繫節奏、Paper Process 時間表,設計一條完整的成交路徑。要求:
+請設計一條完整的成交路徑,輸出 JSON。要求:
+1. 先給 feasibility (high/medium/low) 與理由(誠實,核保 8 週需求若目標 3 週內就標 low)
+2. 分 3-8 個里程碑,每步有明確階段轉換、具體動作、話術、風險
+3. 步驟時間要務實(考量核保、開戶、融資審批週數)
+4. 話術是可以直接講出口的具體句子
+5. 若某 MEDDIC 字母分數過低(例如 E < 4),早期步驟必須處理該弱項
+6. 全部用繁體中文
 
-1. 先給 feasibility 評估(high/medium/low + 理由)。若目標日太近(例如核保需 8 週但目標 3 週內),誠實標 low + 理由。
-2. 分 3-8 個里程碑步驟,每步有明確階段轉換、具體動作、話術、風險。
-3. 步驟時間要務實(考量核保、開戶、融資審批的真實週數)。
-4. 話術要可以直接講出口的具體句子,不是抽象建議。
-5. 若目前某個 MEDDIC 字母分數過低(例如 E < 4),早期步驟必須處理該弱項。
-6. 回應用繁體中文,依 schema 輸出 JSON。`;
+JSON Schema:
+${JSON.stringify(GENERATE_PLAN_JSON_SCHEMA, null, 2)}
+
+只回 JSON,不加任何前後說明文字。`;
 
   const client = getAnthropic();
   try {
-    const msg = await client.messages.parse({
+    const response = await client.messages.create({
       model: AI_MODEL,
       max_tokens: 6000,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: 'high', // 規劃複雜,需要深度思考
-        format: zodOutputFormat(GeneratePlanResponseSchema),
-      },
       system: [
         {
           type: 'text',
@@ -80,28 +78,44 @@ ${body.extraContext ? `\n【額外指示】\n${body.extraContext.trim()}` : ''}
       messages: [{ role: 'user', content: userMessage }],
     });
 
-    const parsed = msg.parsed_output;
-    if (!parsed) {
-      return NextResponse.json({ error: 'AI 規劃失敗,未產出有效 JSON' }, { status: 502 });
+    const textBlock = response.content.find(b => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      return NextResponse.json({ error: 'AI 沒有回傳文字內容' }, { status: 502 });
     }
 
-    const usage = {
-      input_tokens: msg.usage.input_tokens,
-      output_tokens: msg.usage.output_tokens,
-      cache_read_input_tokens: msg.usage.cache_read_input_tokens ?? 0,
-      cache_creation_input_tokens: msg.usage.cache_creation_input_tokens ?? 0,
-    };
+    const jsonText = extractJSON(textBlock.text);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (e) {
+      console.error('[generate-plan] JSON parse failed:', jsonText);
+      return NextResponse.json({ error: 'AI 回傳格式錯誤,無法解析 JSON' }, { status: 502 });
+    }
 
-    // 包成持久化結構:前端拿到後可選擇「儲存到 deal.plan」
+    const validated = GeneratePlanResponseSchema.safeParse(parsed);
+    if (!validated.success) {
+      console.error('[generate-plan] Zod validation failed:', validated.error);
+      return NextResponse.json({ error: 'AI 回傳結構不符:' + validated.error.message }, { status: 502 });
+    }
+
+    const v = validated.data;
+
     const plan = {
       target_date: body.targetCloseDate,
       generated_at: new Date().toISOString(),
       model: AI_MODEL,
-      overview: parsed.overview,
-      feasibility: parsed.feasibility,
-      feasibility_reason: parsed.feasibility_reason,
-      top_risks: parsed.top_risks,
-      steps: parsed.steps.map(s => ({ ...s, completed: false, completed_at: null })),
+      overview: v.overview,
+      feasibility: v.feasibility,
+      feasibility_reason: v.feasibility_reason,
+      top_risks: v.top_risks,
+      steps: v.steps.map(s => ({ ...s, completed: false, completed_at: null })),
+    };
+
+    const usage = {
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens,
+      cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+      cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
     };
 
     return NextResponse.json({ data: plan, usage });
@@ -110,6 +124,15 @@ ${body.extraContext ? `\n【額外指示】\n${body.extraContext.trim()}` : ''}
     console.error('[generate-plan] Claude error:', message);
     return NextResponse.json({ error: 'AI 服務暫時無法使用:' + message }, { status: 502 });
   }
+}
+
+function extractJSON(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+  if (fenced) return fenced[1].trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return text.trim();
 }
 
 function compactDealContext(deal: Record<string, unknown>): string {
