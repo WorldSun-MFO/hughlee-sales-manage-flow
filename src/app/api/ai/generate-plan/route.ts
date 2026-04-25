@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAnthropic, AI_MODEL } from '@/lib/anthropic/client';
+import { getAnthropic } from '@/lib/anthropic/client';
+
+// 規劃用 Sonnet 4.6 而非 Opus 4.7,因為 Vercel Hobby 60 秒上限
+// Opus 4.7 + adaptive thinking 容易超時。Sonnet 4.6 速度約 2-3 倍快,品質夠用。
+const PLAN_MODEL = 'claude-sonnet-4-6';
 import { PLAYBOOK_KNOWLEDGE } from '@/lib/anthropic/playbook';
 import { GeneratePlanResponseSchema, GENERATE_PLAN_JSON_SCHEMA } from '@/lib/anthropic/schemas';
 
@@ -68,8 +72,8 @@ ${JSON.stringify(GENERATE_PLAN_JSON_SCHEMA, null, 2)}
     // 大 max_tokens 必須用 streaming(SDK 強制要求),否則會抛 "Streaming is required" 錯
     // 16K 已足夠:Plan JSON 輸出 ~3K + adaptive thinking ~10K
     const stream = client.messages.stream({
-      model: AI_MODEL,
-      max_tokens: 16000,
+      model: PLAN_MODEL,
+      max_tokens: 8000,                           // Sonnet 4.6 + 較淺思考,8K 已足夠
       // SDK 0.68 型別還沒納入 'adaptive',cast 繞過(API 已 GA 接受)
       thinking: { type: 'adaptive' } as unknown as { type: 'enabled'; budget_tokens: number },
       system: [
@@ -108,7 +112,7 @@ ${JSON.stringify(GENERATE_PLAN_JSON_SCHEMA, null, 2)}
     const plan = {
       target_date: body.targetCloseDate,
       generated_at: new Date().toISOString(),
-      model: AI_MODEL,
+      model: PLAN_MODEL,
       overview: v.overview,
       feasibility: v.feasibility,
       feasibility_reason: v.feasibility_reason,
