@@ -142,7 +142,7 @@ export function DealDetail({
               <select
                 value={deal.rm_id}
                 onChange={(e) => onPatchDeal({ rm_id: e.target.value })}
-                disabled={profile.role !== 'manager' && profile.id !== deal.rm_id}
+                disabled={profile.role === 'rm' && profile.id !== deal.rm_id}
                 className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded bg-white"
               >
                 {allProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}

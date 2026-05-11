@@ -9,7 +9,14 @@ export interface TierConfigItem {
   contact_days: number;
 }
 
-export type Role = 'rm' | 'manager';
+// 三層權限:RM 只看自己;Team Lead 看自己團隊;Admin 看全部
+export type Role = 'rm' | 'team_lead' | 'admin';
+
+export interface Team {
+  id: string;
+  name: string;
+  created_at: string;
+}
 
 export interface Profile {
   id: string;
@@ -17,6 +24,7 @@ export interface Profile {
   full_name: string | null;
   rm_code: string | null;
   role: Role;
+  team_id: string | null;
 }
 
 export interface Scores {

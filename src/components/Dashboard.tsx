@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { STAGES, TIER_STYLES } from '@/lib/constants';
-import type { Deal, DealPlan, PainPoint, Profile, Settings, StageId, Scores, Tier } from '@/lib/types';
+import type { Deal, DealPlan, PainPoint, Profile, Role, Settings, StageId, Scores, Team, Tier } from '@/lib/types';
 import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
@@ -15,16 +15,18 @@ interface Props {
   profile: Profile;
   allProfiles: Profile[];
   initialPainPoints: PainPoint[];
+  initialTeams: Team[];
   settings: Settings;
 }
 
-export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoints, settings: initialSettings }: Props) {
+export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoints, initialTeams, settings: initialSettings }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [deals, setDeals] = useState<Deal[]>(initialDeals);
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [profiles, setProfiles] = useState<Profile[]>(allProfiles);
   const [painPoints, setPainPoints] = useState<PainPoint[]>(initialPainPoints);
+  const [teams, setTeams] = useState<Team[]>(initialTeams);
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -46,6 +48,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deal_questions' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => refetchProfiles())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pain_points' }, () => refetchPainPoints())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, () => refetchTeams())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,6 +74,11 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const refetchPainPoints = useCallback(async () => {
     const { data } = await supabase.from('pain_points').select('*').eq('is_active', true).order('order_idx');
     if (data) setPainPoints(data as PainPoint[]);
+  }, [supabase]);
+
+  const refetchTeams = useCallback(async () => {
+    const { data } = await supabase.from('teams').select('*').order('name');
+    if (data) setTeams(data as Team[]);
   }, [supabase]);
 
   // --- Derived ---
@@ -207,16 +215,23 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('settings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1);
   }
 
-  async function addMember(input: { email: string; full_name: string; role: 'rm' | 'manager' }) {
+  async function addMember(input: { email: string; full_name: string; role: Role; team_id: string | null }) {
     const email = input.email.trim().toLowerCase();
+    // 預檢:若 email 已存在,丟出友善錯誤(不要等資料庫 unique constraint 才報)
+    if (profiles.some(p => p.email.toLowerCase() === email)) {
+      throw new Error(`此 email (${email}) 已存在於成員清單,請改用編輯模式更新角色/團隊。`);
+    }
     const { data, error } = await supabase.from('profiles')
-      .insert({ id: crypto.randomUUID(), email, full_name: input.full_name, rm_code: input.full_name, role: input.role })
+      .insert({ id: crypto.randomUUID(), email, full_name: input.full_name, rm_code: input.full_name, role: input.role, team_id: input.team_id })
       .select().single();
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') throw new Error(`此 email (${email}) 已存在於資料庫,請改用編輯模式更新。`);
+      throw error;
+    }
     if (data) setProfiles(ps => [...ps, data as Profile].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '')));
   }
 
-  async function updateMember(id: string, patch: { full_name?: string; role?: 'rm' | 'manager' }) {
+  async function updateMember(id: string, patch: { full_name?: string; role?: Role; team_id?: string | null }) {
     setProfiles(ps => ps.map(p => p.id === id ? { ...p, ...patch } : p));
     await supabase.from('profiles').update(patch).eq('id', id);
   }
@@ -224,6 +239,30 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   async function removeMember(id: string) {
     setProfiles(ps => ps.filter(p => p.id !== id));
     await supabase.from('profiles').delete().eq('id', id);
+  }
+
+  // 團隊 CRUD(僅 admin 用)
+  async function addTeam(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('團隊名稱不可空白');
+    if (teams.some(t => t.name === trimmed)) throw new Error(`「${trimmed}」團隊已存在`);
+    const { data, error } = await supabase.from('teams').insert({ name: trimmed }).select().single();
+    if (error) throw error;
+    if (data) setTeams(ts => [...ts, data as Team].sort((a, b) => a.name.localeCompare(b.name)));
+  }
+
+  async function updateTeam(id: string, name: string) {
+    const trimmed = name.trim();
+    setTeams(ts => ts.map(t => t.id === id ? { ...t, name: trimmed } : t));
+    await supabase.from('teams').update({ name: trimmed }).eq('id', id);
+  }
+
+  async function removeTeam(id: string) {
+    // 先把這個 team 的成員 team_id 設為 null,避免外鍵卡住
+    setProfiles(ps => ps.map(p => p.team_id === id ? { ...p, team_id: null } : p));
+    setTeams(ts => ts.filter(t => t.id !== id));
+    await supabase.from('profiles').update({ team_id: null }).eq('team_id', id);
+    await supabase.from('teams').delete().eq('id', id);
   }
 
   async function toggleQuestion(dealId: string, questionKey: string) {
@@ -342,7 +381,12 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
               <div className="font-semibold text-sm leading-tight">WORLDSUN MEDDIC Pipeline</div>
               <div className="text-[10px] text-slate-400 leading-tight">沃勝聯合家族辦公室</div>
               <div className="text-xs text-slate-500 leading-tight">
-                {profile.full_name} · {profile.role === 'manager' ? '管理員 (看全部)' : 'RM (看自己)'}
+                {profile.full_name} · {
+                  profile.role === 'admin' ? '🛡 管理員 (看全部)'
+                  : profile.role === 'team_lead'
+                    ? `👥 Team Lead (${teams.find(t => t.id === profile.team_id)?.name ?? '未分團隊'})`
+                    : `RM (${teams.find(t => t.id === profile.team_id)?.name ?? '未分團隊'})`
+                }
               </div>
             </div>
           </div>
@@ -601,11 +645,15 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           profile={profile}
           allProfiles={profiles}
           painPoints={painPoints}
+          teams={teams}
           onClose={() => setShowSettings(false)}
           onSave={saveSettings}
           onAddMember={addMember}
           onUpdateMember={updateMember}
           onRemoveMember={removeMember}
+          onAddTeam={addTeam}
+          onUpdateTeam={updateTeam}
+          onRemoveTeam={removeTeam}
           onAddPain={addPain}
           onUpdatePain={updatePain}
           onRemovePain={removePain}

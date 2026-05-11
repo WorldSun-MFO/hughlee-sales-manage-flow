@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import type { PainPoint, Profile, Settings, StageId, Tier, TierConfigItem } from '@/lib/types';
+import type { PainPoint, Profile, Role, Settings, StageId, Team, Tier, TierConfigItem } from '@/lib/types';
 import { STAGES, TIER_STYLES } from '@/lib/constants';
 import { fmtMoney } from '@/lib/utils';
 
@@ -9,22 +9,39 @@ interface Props {
   profile: Profile;
   allProfiles: Profile[];
   painPoints: PainPoint[];
+  teams: Team[];
   onClose: () => void;
   onSave: (patch: Partial<Settings>) => Promise<void>;
-  onAddMember: (input: { email: string; full_name: string; role: 'rm' | 'manager' }) => Promise<void>;
-  onUpdateMember: (id: string, patch: { full_name?: string; role?: 'rm' | 'manager' }) => Promise<void>;
+  onAddMember: (input: { email: string; full_name: string; role: Role; team_id: string | null }) => Promise<void>;
+  onUpdateMember: (id: string, patch: { full_name?: string; role?: Role; team_id?: string | null }) => Promise<void>;
   onRemoveMember: (id: string) => Promise<void>;
+  onAddTeam: (name: string) => Promise<void>;
+  onUpdateTeam: (id: string, name: string) => Promise<void>;
+  onRemoveTeam: (id: string) => Promise<void>;
   onAddPain: (input: { pain: string; product: string; pitch: string; tiers: string }) => Promise<void>;
   onUpdatePain: (id: string, patch: Partial<PainPoint>) => Promise<void>;
   onRemovePain: (id: string) => Promise<void>;
 }
 
-export function SettingsModal({ settings, profile, allProfiles, painPoints, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember, onAddPain, onUpdatePain, onRemovePain }: Props) {
-  const isManager = profile.role === 'manager';
+const ROLE_LABEL: Record<Role, string> = {
+  rm: 'RM',
+  team_lead: 'Team Lead',
+  admin: 'Admin',
+};
+
+export function SettingsModal({ settings, profile, allProfiles, painPoints, teams, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember, onAddTeam, onUpdateTeam, onRemoveTeam, onAddPain, onUpdatePain, onRemovePain }: Props) {
+  const isAdmin = profile.role === 'admin';
+  const isTeamLead = profile.role === 'team_lead';
+  const canEditMembers = isAdmin || isTeamLead;
+  const canEditTeams = isAdmin;
+  const canEditSettings = isAdmin;
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
-  const [newRole, setNewRole] = useState<'rm' | 'manager'>('rm');
+  const [newRole, setNewRole] = useState<Role>('rm');
+  const [newTeamId, setNewTeamId] = useState<string>(profile.team_id ?? '');
   const [adding, setAdding] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [addingTeam, setAddingTeam] = useState(false);
   const [newPain, setNewPain] = useState('');
   const [newProduct, setNewProduct] = useState('');
   const [newPitch, setNewPitch] = useState('');
@@ -35,12 +52,30 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
     if (!newEmail.trim() || !newName.trim()) { alert('請填 Email 與姓名'); return; }
     setAdding(true);
     try {
-      await onAddMember({ email: newEmail.trim(), full_name: newName.trim(), role: newRole });
+      await onAddMember({
+        email: newEmail.trim(),
+        full_name: newName.trim(),
+        role: newRole,
+        team_id: newTeamId || null,
+      });
       setNewEmail(''); setNewName(''); setNewRole('rm');
     } catch (err) {
       alert('新增失敗:' + (err as Error).message);
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function submitNewTeam() {
+    if (!newTeamName.trim()) { alert('請填團隊名稱'); return; }
+    setAddingTeam(true);
+    try {
+      await onAddTeam(newTeamName);
+      setNewTeamName('');
+    } catch (err) {
+      alert('新增失敗:' + (err as Error).message);
+    } finally {
+      setAddingTeam(false);
     }
   }
 
@@ -62,17 +97,75 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
       <div className="fixed inset-0 bg-slate-900/50 z-40" onClick={onClose} />
       <div className="fixed inset-x-4 top-8 bottom-8 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[640px] sm:top-12 sm:bottom-12 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col">
         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="font-semibold">設定 {!isManager && <span className="text-xs text-slate-400 font-normal ml-2">(唯讀 — 需管理員修改)</span>}</h2>
+          <h2 className="font-semibold">設定 {!isAdmin && <span className="text-xs text-slate-400 font-normal ml-2">(唯讀 — 需管理員修改)</span>}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded hover:bg-slate-100">✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin p-5 space-y-6 text-sm">
 
+          {/* 團隊管理(Admin only)*/}
+          {isAdmin && (
+            <div>
+              <h3 className="font-semibold mb-2">🏢 團隊管理</h3>
+              <p className="text-xs text-slate-500 mb-2">
+                Admin 可建立業務組或地區團隊。Team Lead 只能看自己團隊的案件,RM 只能看自己的。
+              </p>
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="text-left px-2 py-1.5">團隊名</th>
+                      <th className="text-left px-2 py-1.5">成員數</th>
+                      <th className="text-right px-2 py-1.5"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teams.map(t => {
+                      const memberCount = allProfiles.filter(p => p.team_id === t.id).length;
+                      return (
+                        <tr key={t.id} className="border-t border-slate-100">
+                          <td className="px-2 py-1.5">
+                            <input
+                              defaultValue={t.name}
+                              onBlur={e => { if (e.target.value.trim() && e.target.value !== t.name) onUpdateTeam(t.id, e.target.value); }}
+                              className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 rounded font-medium"
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 text-slate-600">{memberCount} 人</td>
+                          <td className="px-2 py-1.5 text-right">
+                            <button
+                              onClick={() => { if (confirm(`刪除「${t.name}」團隊?裡面 ${memberCount} 位成員會變成「未分團隊」狀態`)) onRemoveTeam(t.id); }}
+                              className="text-rose-500 hover:underline"
+                            >刪</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="text"
+                  value={newTeamName}
+                  onChange={e => setNewTeamName(e.target.value)}
+                  placeholder="新團隊名稱(例如:Daniel 組、台北團隊)"
+                  className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs"
+                />
+                <button
+                  onClick={submitNewTeam}
+                  disabled={addingTeam}
+                  className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                >{addingTeam ? '...' : '＋ 新增'}</button>
+              </div>
+            </div>
+          )}
+
           {/* 團隊成員管理 */}
           <div>
             <h3 className="font-semibold mb-2">👥 團隊成員</h3>
             <p className="text-xs text-slate-500 mb-2">
-              預建的 RM 對方一登入會自動合併,案件會保留。Manager 可以看全部案件,RM 只能看自己的。
+              <b>權限</b>:Admin 看全部、Team Lead 看自己團隊、RM 只看自己。對方一登入會自動合併,案件保留。
             </p>
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <table className="w-full text-xs">
@@ -81,57 +174,78 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                     <th className="text-left px-2 py-1.5">姓名</th>
                     <th className="text-left px-2 py-1.5">Email</th>
                     <th className="text-left px-2 py-1.5">角色</th>
+                    <th className="text-left px-2 py-1.5">團隊</th>
                     <th className="text-right px-2 py-1.5"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allProfiles.map(p => (
-                    <tr key={p.id} className="border-t border-slate-100">
-                      <td className="px-2 py-1.5">
-                        {isManager && p.id !== profile.id ? (
-                          <input
-                            defaultValue={p.full_name ?? ''}
-                            onBlur={e => { if (e.target.value !== p.full_name) onUpdateMember(p.id, { full_name: e.target.value }); }}
-                            className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 rounded"
-                          />
-                        ) : <span>{p.full_name || '—'}</span>}
-                        {p.id === profile.id && <span className="ml-1 text-[10px] text-indigo-600">(我)</span>}
-                      </td>
-                      <td className="px-2 py-1.5 text-slate-600">{p.email}</td>
-                      <td className="px-2 py-1.5">
-                        {isManager && p.id !== profile.id ? (
-                          <select
-                            value={p.role}
-                            onChange={e => onUpdateMember(p.id, { role: e.target.value as 'rm' | 'manager' })}
-                            className="px-1 py-0.5 border border-slate-200 rounded bg-white text-xs"
-                          >
-                            <option value="rm">RM</option>
-                            <option value="manager">Manager</option>
-                          </select>
-                        ) : (
-                          <span className={p.role === 'manager' ? 'text-indigo-600 font-semibold' : 'text-slate-500'}>
-                            {p.role === 'manager' ? 'Manager' : 'RM'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 text-right">
-                        {isManager && p.id !== profile.id && (
-                          <button
-                            onClick={() => { if (confirm(`移除「${p.full_name || p.email}」?若對方已登入過,其案件會無法再指派`)) onRemoveMember(p.id); }}
-                            className="text-rose-500 hover:underline"
-                          >移除</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {allProfiles.map(p => {
+                    const canEditThis = isAdmin && p.id !== profile.id;
+                    return (
+                      <tr key={p.id} className="border-t border-slate-100">
+                        <td className="px-2 py-1.5">
+                          {canEditThis ? (
+                            <input
+                              defaultValue={p.full_name ?? ''}
+                              onBlur={e => { if (e.target.value !== p.full_name) onUpdateMember(p.id, { full_name: e.target.value }); }}
+                              className="w-full px-1 py-0.5 border border-transparent hover:border-slate-200 rounded"
+                            />
+                          ) : <span>{p.full_name || '—'}</span>}
+                          {p.id === profile.id && <span className="ml-1 text-[10px] text-indigo-600">(我)</span>}
+                        </td>
+                        <td className="px-2 py-1.5 text-slate-600">{p.email}</td>
+                        <td className="px-2 py-1.5">
+                          {canEditThis ? (
+                            <select
+                              value={p.role}
+                              onChange={e => onUpdateMember(p.id, { role: e.target.value as Role })}
+                              className="px-1 py-0.5 border border-slate-200 rounded bg-white text-xs"
+                            >
+                              <option value="rm">RM</option>
+                              <option value="team_lead">Team Lead</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          ) : (
+                            <span className={
+                              p.role === 'admin' ? 'text-rose-600 font-semibold'
+                              : p.role === 'team_lead' ? 'text-indigo-600 font-semibold'
+                              : 'text-slate-500'
+                            }>{ROLE_LABEL[p.role]}</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {canEditThis ? (
+                            <select
+                              value={p.team_id ?? ''}
+                              onChange={e => onUpdateMember(p.id, { team_id: e.target.value || null })}
+                              className="px-1 py-0.5 border border-slate-200 rounded bg-white text-xs"
+                            >
+                              <option value="">(未分)</option>
+                              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-slate-600">{teams.find(t => t.id === p.team_id)?.name ?? '—'}</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          {canEditThis && (
+                            <button
+                              onClick={() => { if (confirm(`移除「${p.full_name || p.email}」?若對方已登入過,其案件會無法再指派`)) onRemoveMember(p.id); }}
+                              className="text-rose-500 hover:underline"
+                            >移除</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {isManager && (
+            {isAdmin && (
               <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-xs font-semibold mb-2">➕ 新增 RM / Manager(對方不用先登入)</div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                <div className="text-xs font-semibold mb-2">➕ 新增成員(對方不用先登入)</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input
                     type="text"
                     value={newName}
@@ -144,26 +258,33 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                     value={newEmail}
                     onChange={e => setNewEmail(e.target.value)}
                     placeholder="Gmail / 公司 email"
-                    className="sm:col-span-2 px-2 py-1 border border-slate-200 rounded"
+                    className="px-2 py-1 border border-slate-200 rounded"
                   />
-                  <div className="flex gap-1">
-                    <select
-                      value={newRole}
-                      onChange={e => setNewRole(e.target.value as 'rm' | 'manager')}
-                      className="flex-1 px-2 py-1 border border-slate-200 rounded bg-white"
-                    >
-                      <option value="rm">RM</option>
-                      <option value="manager">Manager</option>
-                    </select>
-                    <button
-                      onClick={submitNewMember}
-                      disabled={adding}
-                      className="px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
-                    >{adding ? '...' : '新增'}</button>
-                  </div>
+                  <select
+                    value={newRole}
+                    onChange={e => setNewRole(e.target.value as Role)}
+                    className="px-2 py-1 border border-slate-200 rounded bg-white"
+                  >
+                    <option value="rm">RM(只看自己)</option>
+                    <option value="team_lead">Team Lead(看自己團隊)</option>
+                    <option value="admin">Admin(看全部)</option>
+                  </select>
+                  <select
+                    value={newTeamId}
+                    onChange={e => setNewTeamId(e.target.value)}
+                    className="px-2 py-1 border border-slate-200 rounded bg-white"
+                  >
+                    <option value="">(未分團隊)</option>
+                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
                 </div>
+                <button
+                  onClick={submitNewMember}
+                  disabled={adding}
+                  className="mt-2 w-full px-3 py-1.5 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50"
+                >{adding ? '新增中...' : '✓ 新增成員'}</button>
                 <p className="mt-2 text-xs text-slate-500">
-                  ⚠️ Email 必須跟對方的 Google 帳號完全一致(含大小寫)。新增後先在案件裡把 RM 指給他,等他首次登入時系統會自動接管。
+                  ⚠️ Email 必須跟對方 Google 帳號完全一致(小寫)。建好後在案件指派 RM,對方首次登入會自動接管。
                 </p>
               </div>
             )}
@@ -173,7 +294,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
           <div>
             <h3 className="font-semibold mb-2">🎯 痛點 → 商品 矩陣 <span className="text-xs text-slate-400 font-normal">({painPoints.length} 條)</span></h3>
             <p className="text-xs text-slate-500 mb-2">
-              客戶說出痛點時,業務員會直接在案件頁看到建議商品 + 切入話術。Manager 可新增/編輯/刪除。
+              客戶說出痛點時,業務員會直接在案件頁看到建議商品 + 切入話術。Admin 可新增/編輯/刪除。
             </p>
             <div className="border border-slate-200 rounded-lg overflow-hidden max-h-80 overflow-y-auto scrollbar-thin">
               <table className="w-full text-xs">
@@ -192,7 +313,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                     <tr key={p.id} className="border-t border-slate-100 align-top">
                       <td className="px-2 py-1.5 text-slate-400 text-xs">{i + 1}</td>
                       <td className="px-2 py-1.5">
-                        {isManager ? (
+                        {isAdmin ? (
                           <textarea
                             defaultValue={p.pain}
                             onBlur={e => { if (e.target.value !== p.pain) onUpdatePain(p.id, { pain: e.target.value }); }}
@@ -202,7 +323,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                         ) : <span>{p.pain}</span>}
                       </td>
                       <td className="px-2 py-1.5">
-                        {isManager ? (
+                        {isAdmin ? (
                           <textarea
                             defaultValue={p.product}
                             onBlur={e => { if (e.target.value !== p.product) onUpdatePain(p.id, { product: e.target.value }); }}
@@ -212,7 +333,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                         ) : <span className="text-indigo-700">{p.product}</span>}
                       </td>
                       <td className="px-2 py-1.5">
-                        {isManager ? (
+                        {isAdmin ? (
                           <textarea
                             defaultValue={p.pitch}
                             onBlur={e => { if (e.target.value !== p.pitch) onUpdatePain(p.id, { pitch: e.target.value }); }}
@@ -222,7 +343,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                         ) : <span className="text-slate-600">{p.pitch}</span>}
                       </td>
                       <td className="px-2 py-1.5">
-                        {isManager ? (
+                        {isAdmin ? (
                           <input
                             defaultValue={p.tiers}
                             onBlur={e => { if (e.target.value !== p.tiers) onUpdatePain(p.id, { tiers: e.target.value }); }}
@@ -232,7 +353,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                         ) : <span>{p.tiers}</span>}
                       </td>
                       <td className="px-2 py-1.5 text-right">
-                        {isManager && (
+                        {isAdmin && (
                           <button
                             onClick={() => { if (confirm(`刪除「${p.pain}」?`)) onRemovePain(p.id); }}
                             className="text-rose-500 hover:underline"
@@ -245,7 +366,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
               </table>
             </div>
 
-            {isManager && (
+            {isAdmin && (
               <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="text-xs font-semibold mb-2">➕ 新增痛點</div>
                 <div className="space-y-2">
@@ -312,7 +433,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                         <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${TIER_STYLES[t.key] ?? 'bg-slate-200'}`}>{t.key}</span>
                       </td>
                       <td className="px-2 py-1.5">
-                        {isManager ? (
+                        {isAdmin ? (
                           <input
                             defaultValue={t.name}
                             onBlur={e => {
@@ -327,7 +448,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                         ) : <span>{t.name}</span>}
                       </td>
                       <td className="px-2 py-1.5">
-                        {isManager ? (
+                        {isAdmin ? (
                           <input
                             type="text"
                             inputMode="numeric"
@@ -345,7 +466,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                         ) : <span className="font-mono">{fmtMoney(t.aum_min)}</span>}
                       </td>
                       <td className="px-2 py-1.5">
-                        {isManager ? (
+                        {isAdmin ? (
                           <input
                             type="number"
                             min={1}
@@ -387,7 +508,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                     min={0}
                     max={100}
                     defaultValue={settings.stage_probs[stage.id]}
-                    disabled={!isManager}
+                    disabled={!isAdmin}
                     onBlur={(e) => {
                       const v = Number(e.target.value);
                       if (v !== settings.stage_probs[stage.id]) {
@@ -411,7 +532,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                 <input
                   type="number"
                   defaultValue={settings.red_flag.ebScore}
-                  disabled={!isManager}
+                  disabled={!isAdmin}
                   onBlur={(e) => onSave({ red_flag: { ...settings.red_flag, ebScore: Number(e.target.value) } })}
                   className="mt-1 w-full px-2 py-1 border border-slate-200 rounded disabled:bg-slate-50"
                 />
@@ -421,7 +542,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                 <input
                   type="number"
                   defaultValue={settings.red_flag.totalScore}
-                  disabled={!isManager}
+                  disabled={!isAdmin}
                   onBlur={(e) => onSave({ red_flag: { ...settings.red_flag, totalScore: Number(e.target.value) } })}
                   className="mt-1 w-full px-2 py-1 border border-slate-200 rounded disabled:bg-slate-50"
                 />
@@ -431,7 +552,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, onCl
                 <input
                   type="number"
                   defaultValue={settings.red_flag.staleDays}
-                  disabled={!isManager}
+                  disabled={!isAdmin}
                   onBlur={(e) => onSave({ red_flag: { ...settings.red_flag, staleDays: Number(e.target.value) } })}
                   className="mt-1 w-full px-2 py-1 border border-slate-200 rounded disabled:bg-slate-50"
                 />
