@@ -52,6 +52,7 @@ export interface Comment {
   author_id: string | null;
   body: string;
   is_system: boolean;
+  is_raw: boolean;          // 原始對話 / 語音逐字稿(未經 AI 處理)
   created_at: string;
 }
 
@@ -99,7 +100,12 @@ export interface Deal {
 export interface Settings {
   id: 1;
   stage_probs: Record<StageId, number>;
-  red_flag: { ebScore: number; totalScore: number; staleDays: number };
+  red_flag: {
+    ebScore: number;
+    totalScore: number;
+    staleDays: number;          // 紅旗:多久沒更新(預設 30)
+    contactWarnDays?: number;   // 警示:多久沒聯繫(預設 14,Sprint A 加入)
+  };
   tier_config: { tiers: TierConfigItem[] };
 }
 

@@ -175,11 +175,18 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     }
   }
 
-  async function addComment(dealId: string, body: string, isSystem = false) {
-    const { data } = await supabase.from('comments').insert({ deal_id: dealId, author_id: profile.id, body, is_system: isSystem }).select().single();
+  async function addComment(dealId: string, body: string, isSystem = false, isRaw = false) {
+    const { data } = await supabase.from('comments')
+      .insert({ deal_id: dealId, author_id: profile.id, body, is_system: isSystem, is_raw: isRaw })
+      .select().single();
     if (data) {
       setDeals(prev => prev.map(d => d.id === dealId ? { ...d, comments: [...(d.comments ?? []), data] } : d));
     }
+  }
+
+  // 存原始未經 AI 處理的文字(從 AI助手「分析」按下時觸發)
+  async function saveRawText(dealId: string, rawText: string) {
+    await addComment(dealId, rawText, false, true);
   }
 
   async function advanceStage(dealId: string) {
@@ -623,6 +630,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           onAddComment={(body) => addComment(currentDeal.id, body)}
           onAdvance={() => advanceStage(currentDeal.id)}
           onDelete={() => deleteDeal(currentDeal.id)}
+          onSaveRawText={(raw) => saveRawText(currentDeal.id, raw)}
           onApplyAISuggestion={(patch) => applyAISuggestion(currentDeal.id, patch)}
           onSavePlan={(plan, td) => savePlan(currentDeal.id, plan, td)}
           onTogglePlanStep={(stepId) => togglePlanStep(currentDeal.id, stepId)}

@@ -98,7 +98,16 @@ export function priorityReason(deal: Deal, settings: Settings, tiers: TierConfig
   if (flag) return { icon: '🚩', text: flag, tone: 'rose', weight: 1000 };
 
   const ci = contactOverdue(deal, tiers);
-  if (ci?.status === 'overdue') return { icon: '⚠️', text: `已逾期 ${ci.deltaDays} 天未聯繫`, tone: 'amber', weight: 500 + ci.deltaDays * 5 };
+  if (ci?.status === 'overdue') return { icon: '⚠️', text: `已逾期 ${ci.deltaDays} 天未聯繫(${deal.tier ?? '?'} 等級週期)`, tone: 'amber', weight: 500 + ci.deltaDays * 5 };
+
+  // 2 週警示(不分 tier 的通用警示,B/C 等級在 tier 規則前先觸發)
+  const warnDays = settings.red_flag.contactWarnDays ?? 14;
+  if (deal.last_contact_at) {
+    const daysSinceContact = contactDaysSince(deal) ?? 0;
+    if (daysSinceContact >= warnDays) {
+      return { icon: '🔔', text: `已 ${daysSinceContact} 天未聯繫(超過 ${warnDays} 天警戒)`, tone: 'amber', weight: 350 + daysSinceContact };
+    }
+  }
 
   const staleDays = daysSince(deal.last_updated);
   if (['L4','L5','L6'].includes(deal.stage) && staleDays > 14) {

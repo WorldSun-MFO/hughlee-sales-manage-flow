@@ -6,6 +6,7 @@ import { MEDDIC } from '@/lib/constants';
 interface Props {
   deal: Deal;
   onClose: () => void;
+  onSaveRawText: (rawText: string) => Promise<void>;     // 保留原始未修改文字
   onApply: (patch: {
     scores?: Partial<Scores>;
     next_step?: string | null;
@@ -15,7 +16,7 @@ interface Props {
   }) => Promise<void>;
 }
 
-export function AIChatModal({ deal, onClose, onApply }: Props) {
+export function AIChatModal({ deal, onClose, onSaveRawText, onApply }: Props) {
   const [userText, setUserText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,16 +36,21 @@ export function AIChatModal({ deal, onClose, onApply }: Props) {
     setLoading(true);
     setSuggestion(null);
     try {
+      // ⓵ 先把原始文字存進註解時間軸(標記 is_raw),保留客戶真實對話
+      await onSaveRawText(userText.trim());
+
+      // ⓶ 呼叫 AI 解析
       const res = await fetch('/api/ai/parse-interaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dealId: deal.id, userText: userText.trim() }),
       });
-      const json = await res.json();
+      const raw = await res.text();
+      let json: { data?: ParseInteractionSuggestion; error?: string };
+      try { json = JSON.parse(raw); } catch { throw new Error(`回應格式錯誤(HTTP ${res.status})`); }
       if (!res.ok) throw new Error(json.error || '解析失敗');
       const data = json.data as ParseInteractionSuggestion;
       setSuggestion(data);
-      // 預設全部勾選
       const scoreIdx: Record<number, boolean> = {};
       data.score_updates.forEach((_, i) => { scoreIdx[i] = true; });
       const qs: Record<string, boolean> = {};
@@ -61,6 +67,28 @@ export function AIChatModal({ deal, onClose, onApply }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  // === 編輯 AI 建議的 helper ===
+  function updateScoreNew(i: number, newVal: number) {
+    if (!suggestion) return;
+    const updates = [...suggestion.score_updates];
+    updates[i] = { ...updates[i], new: Math.max(0, Math.min(10, newVal)) };
+    setSuggestion({ ...suggestion, score_updates: updates });
+  }
+  function updateScoreReason(i: number, reason: string) {
+    if (!suggestion) return;
+    const updates = [...suggestion.score_updates];
+    updates[i] = { ...updates[i], reason };
+    setSuggestion({ ...suggestion, score_updates: updates });
+  }
+  function updateComment(v: string) {
+    if (!suggestion) return;
+    setSuggestion({ ...suggestion, new_comment: v });
+  }
+  function updateNextStep(v: string) {
+    if (!suggestion) return;
+    setSuggestion({ ...suggestion, next_step_update: v || null });
   }
 
   async function applySelected() {
@@ -120,7 +148,7 @@ export function AIChatModal({ deal, onClose, onApply }: Props) {
                 />
               </label>
               <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
-                💡 越具體越好:AI 會從你的描述中推斷 MEDDIC 分數變化、已釐清的題目、下一步動作,最後讓你逐項審核要不要套用。
+                💡 <b>原話會被完整保留</b>(時間軸 + 對話原稿區),AI 摘要另存。建議建議可<b>逐項編輯</b>後再套用。
               </div>
               <button
                 onClick={analyze}
@@ -140,65 +168,90 @@ export function AIChatModal({ deal, onClose, onApply }: Props) {
                 <div className="text-sm text-slate-800">{suggestion.summary}</div>
               </div>
 
+              <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+                ✅ 你的原始描述已存進「對話原稿」與時間軸(📝 標記)。下面的 AI 建議可逐項<b>修改</b>後再套用。
+              </div>
+
               {suggestion.score_updates.length > 0 && (
                 <div>
-                  <div className="text-sm font-semibold mb-2">📊 建議的 MEDDIC 分數更新</div>
+                  <div className="text-sm font-semibold mb-2">📊 建議的 MEDDIC 分數更新 <span className="text-xs text-slate-400 font-normal">(可改數字 + 理由)</span></div>
                   <div className="space-y-1.5">
                     {suggestion.score_updates.map((u, i) => (
-                      <label key={i} className="flex items-start gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+                      <div key={i} className="flex items-start gap-2 p-2 border border-slate-200 rounded-lg">
                         <input
                           type="checkbox"
                           checked={!!selected.scoreIdx[i]}
                           onChange={e => setSelected(s => ({ ...s, scoreIdx: { ...s.scoreIdx, [i]: e.target.checked } }))}
-                          className="mt-0.5 accent-indigo-600"
+                          className="mt-2 accent-indigo-600"
                         />
-                        <div className="flex-1 min-w-0 text-sm">
-                          <div>
-                            <span className="font-medium">{scoreFieldLabel(u.field)}</span>:
-                            <span className="ml-1 text-slate-400 line-through">{u.old}</span>
-                            <span className="ml-1 text-indigo-700 font-bold">→ {u.new}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">{scoreFieldLabel(u.field)}</span>
+                            <span className="text-slate-400 line-through">{u.old}</span>
+                            <span className="text-slate-400">→</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={10}
+                              value={u.new}
+                              onChange={e => updateScoreNew(i, Number(e.target.value))}
+                              className="w-14 px-1 py-0.5 border border-indigo-300 rounded text-indigo-700 font-bold text-center"
+                            />
                           </div>
-                          <div className="text-xs text-slate-500 mt-0.5">{u.reason}</div>
+                          <input
+                            type="text"
+                            value={u.reason}
+                            onChange={e => updateScoreReason(i, e.target.value)}
+                            placeholder="理由"
+                            className="mt-1 w-full px-1.5 py-0.5 text-xs border border-slate-200 hover:border-slate-300 rounded text-slate-600"
+                          />
                         </div>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {suggestion.new_comment && (
-                <div>
-                  <div className="text-sm font-semibold mb-2">💬 建議加入註解</div>
-                  <label className="flex items-start gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={selected.comment}
-                      onChange={e => setSelected(s => ({ ...s, comment: e.target.checked }))}
-                      className="mt-0.5 accent-indigo-600"
-                    />
-                    <div className="text-sm flex-1">{suggestion.new_comment}</div>
-                  </label>
-                </div>
-              )}
+              <div>
+                <div className="text-sm font-semibold mb-2">💬 加入註解 <span className="text-xs text-slate-400 font-normal">(可修改)</span></div>
+                <label className="flex items-start gap-2 p-2 border border-slate-200 rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={selected.comment}
+                    onChange={e => setSelected(s => ({ ...s, comment: e.target.checked }))}
+                    className="mt-2 accent-indigo-600"
+                  />
+                  <textarea
+                    value={suggestion.new_comment ?? ''}
+                    onChange={e => updateComment(e.target.value)}
+                    rows={2}
+                    className="flex-1 px-2 py-1 border border-slate-200 hover:border-slate-300 rounded text-sm resize-vertical"
+                  />
+                </label>
+              </div>
 
-              {suggestion.next_step_update && (
-                <div>
-                  <div className="text-sm font-semibold mb-2">🎯 建議下一步</div>
-                  <label className="flex items-start gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={selected.nextStep}
-                      onChange={e => setSelected(s => ({ ...s, nextStep: e.target.checked }))}
-                      className="mt-0.5 accent-indigo-600"
-                    />
-                    <div className="text-sm flex-1">{suggestion.next_step_update}</div>
-                  </label>
-                </div>
-              )}
+              <div>
+                <div className="text-sm font-semibold mb-2">🎯 下一步動作 <span className="text-xs text-slate-400 font-normal">(可修改)</span></div>
+                <label className="flex items-start gap-2 p-2 border border-slate-200 rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={selected.nextStep}
+                    onChange={e => setSelected(s => ({ ...s, nextStep: e.target.checked }))}
+                    className="mt-2 accent-indigo-600"
+                  />
+                  <input
+                    type="text"
+                    value={suggestion.next_step_update ?? ''}
+                    onChange={e => updateNextStep(e.target.value)}
+                    placeholder="什麼時候 / 跟誰 / 做什麼"
+                    className="flex-1 px-2 py-1 border border-slate-200 hover:border-slate-300 rounded text-sm"
+                  />
+                </label>
+              </div>
 
               {suggestion.question_checkoffs.length > 0 && (
                 <div>
-                  <div className="text-sm font-semibold mb-2">✅ 建議勾選的「已釐清題目」</div>
+                  <div className="text-sm font-semibold mb-2">✅ 已釐清的題目</div>
                   <div className="flex flex-wrap gap-1.5">
                     {suggestion.question_checkoffs.map(key => (
                       <label key={key} className={`inline-flex items-center gap-1 text-xs px-2 py-1 border rounded cursor-pointer ${selected.questions[key] ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-500'}`}>
@@ -254,7 +307,7 @@ export function AIChatModal({ deal, onClose, onApply }: Props) {
               onClick={applySelected}
               disabled={applying}
               className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded font-semibold hover:bg-emerald-700 disabled:opacity-50"
-            >{applying ? '套用中...' : '✓ 套用勾選的建議'}</button>
+            >{applying ? '套用中...' : '✓ 套用(已修改的版本)'}</button>
           </div>
         )}
       </div>

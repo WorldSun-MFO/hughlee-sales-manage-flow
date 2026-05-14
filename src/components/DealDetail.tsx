@@ -22,6 +22,7 @@ interface Props {
   onAddComment: (body: string) => void;
   onAdvance: () => void;
   onDelete: () => void;
+  onSaveRawText: (rawText: string) => Promise<void>;
   onApplyAISuggestion: (patch: {
     scores?: Partial<Scores>;
     next_step?: string | null;
@@ -36,7 +37,7 @@ interface Props {
 export function DealDetail({
   deal, settings, allProfiles, profile, painPoints, onClose,
   onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onToggleQuestion, onAddComment, onAdvance, onDelete,
-  onApplyAISuggestion, onSavePlan, onTogglePlanStep,
+  onSaveRawText, onApplyAISuggestion, onSavePlan, onTogglePlanStep,
 }: Props) {
   const [newComment, setNewComment] = useState('');
   const [showAIChat, setShowAIChat] = useState(false);
@@ -463,6 +464,29 @@ export function DealDetail({
                 className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
               />
             </label>
+            {/* 對話原稿(is_raw=true 的註解,你跟客戶的真實對話) */}
+            {(() => {
+              const rawComments = (deal.comments ?? [])
+                .filter(c => c.is_raw)
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+              if (rawComments.length === 0) return null;
+              return (
+                <details className="mt-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <summary className="cursor-pointer px-3 py-2 font-semibold text-sm text-amber-900 select-none">
+                    📜 對話原稿 <span className="text-xs font-normal text-amber-700">({rawComments.length} 筆,未經 AI 處理的原話)</span>
+                  </summary>
+                  <ul className="px-3 pb-3 space-y-2 max-h-72 overflow-y-auto scrollbar-thin">
+                    {rawComments.map(c => (
+                      <li key={c.id} className="bg-white rounded px-2 py-1.5 border border-amber-100">
+                        <div className="text-[11px] text-amber-700 font-medium">📝 {new Date(c.created_at).toLocaleString('zh-TW', { hour12: false })}</div>
+                        <div className="text-sm text-slate-800 whitespace-pre-wrap mt-0.5">{c.body}</div>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              );
+            })()}
+
             <div className="mt-3">
               <h3 className="font-semibold text-sm mb-2">註解時間軸</h3>
               <div className="flex gap-2">
@@ -478,9 +502,17 @@ export function DealDetail({
               </div>
               <ul className="mt-2 space-y-1.5 max-h-60 overflow-y-auto scrollbar-thin">
                 {(deal.comments ?? []).slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(c => (
-                  <li key={c.id} className="text-sm bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
+                  <li key={c.id} className={`text-sm rounded px-2 py-1.5 border ${
+                    c.is_raw ? 'bg-amber-50 border-amber-100'
+                    : c.is_system ? 'bg-slate-50 border-slate-100'
+                    : 'bg-slate-50 border-slate-100'
+                  }`}>
                     <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleString('zh-TW', { hour12: false })}</div>
-                    <div>{c.is_system ? <span className="text-slate-500">【系統】</span> : null}{c.body}</div>
+                    <div>
+                      {c.is_raw ? <span className="text-amber-700 font-medium">📝 原話 · </span>
+                        : c.is_system ? <span className="text-slate-500">【系統】</span> : null}
+                      {c.body}
+                    </div>
                   </li>
                 ))}
                 {!(deal.comments ?? []).length && <li className="text-xs text-slate-400">暫無註解</li>}
@@ -498,6 +530,7 @@ export function DealDetail({
         <AIChatModal
           deal={deal}
           onClose={() => setShowAIChat(false)}
+          onSaveRawText={async (raw) => { await onSaveRawText(raw); }}
           onApply={async (patch) => { await onApplyAISuggestion(patch); setShowAIChat(false); }}
         />
       )}
