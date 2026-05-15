@@ -512,6 +512,10 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
             ＋ 新增案件
           </button>
           <button onClick={() => setShowNewDeal(true)} className="sm:hidden inline-flex items-center justify-center w-9 h-9 bg-indigo-600 text-white rounded-lg font-bold">＋</button>
+          <button onClick={() => router.push('/market')} className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50" title="金融資訊大腦">
+            🧠 市場大腦
+          </button>
+          <button onClick={() => router.push('/market')} className="sm:hidden inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg" title="市場大腦">🧠</button>
           <button onClick={handleExportCSV} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="匯出 CSV(可直接貼進 Google Sheets)">📥</button>
           <button onClick={() => setShowSettings(true)} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="設定">⚙︎</button>
           <button onClick={signOut} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="登出">⏻</button>
