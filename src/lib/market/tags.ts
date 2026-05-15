@@ -1,7 +1,8 @@
-import type { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import type { TagCategory } from '@/lib/types';
 
-// 用本專案 server client 的實際回傳型別,避免額外依賴 @supabase/supabase-js 的型別匯出
+// 用本專案 server client 的實際回傳型別(createClient 僅在 typeof 型別查詢用到,
+// 不能用 import type,否則 TS 會報「不能當值使用」)
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export interface TagInput {

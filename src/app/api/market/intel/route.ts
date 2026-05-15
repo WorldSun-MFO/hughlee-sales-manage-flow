@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 });
 
-  let body: z.infer<typeof CreateSchema>;
+  let body;
   try {
     body = CreateSchema.parse(await request.json());
   } catch (err: unknown) {

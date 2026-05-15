@@ -52,7 +52,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 });
 
-  let body: z.infer<typeof UpdateSchema>;
+  let body;
   try {
     body = UpdateSchema.parse(await request.json());
   } catch (err: unknown) {
