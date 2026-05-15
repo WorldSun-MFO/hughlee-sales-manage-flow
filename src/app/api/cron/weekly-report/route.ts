@@ -51,7 +51,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ skipped: 'no recipients' });
     }
 
-    const stats = computeStats(deals ?? [], tasks ?? []);
+    // Supabase 對 1:1 關聯回傳的型別是陣列,實際解析時用 unknown cast 繞 TS 嚴格檢查
+    const stats = computeStats((deals ?? []) as unknown as DealRow[], (tasks ?? []) as unknown as TaskRow[]);
     const html = renderEmail(stats);
 
     const resend = new Resend(process.env.RESEND_API_KEY);
