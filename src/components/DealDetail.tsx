@@ -443,8 +443,8 @@ export function DealDetail({
           )}
 
           {/* Pain → product */}
-          <div>
-            <h3 className="font-semibold text-sm mb-2">痛點 → 建議商品 <span className="text-xs text-slate-400 font-normal">({painPoints.length} 條)</span></h3>
+          <details>
+            <summary className="cursor-pointer select-none font-semibold text-sm mb-2">痛點 → 建議商品 <span className="text-xs text-slate-400 font-normal">({painPoints.length} 條)</span></summary>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {painPoints.map(row => (
                 <div key={row.id} className="border border-slate-200 rounded p-2 text-xs">
@@ -456,7 +456,7 @@ export function DealDetail({
               ))}
               {painPoints.length === 0 && <div className="col-span-full text-xs text-slate-400 text-center py-4">尚未設定,請到設定頁新增</div>}
             </div>
-          </div>
+          </details>
 
           {/* Next step + comments */}
           <div>

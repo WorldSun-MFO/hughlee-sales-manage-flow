@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { STAGES, TIER_STYLES } from '@/lib/constants';
 import type { Deal, DealAttachment, DealPlan, PainPoint, Profile, Role, Settings, StageId, Scores, Task, TaskPriority, Team, Tier } from '@/lib/types';
-import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV } from '@/lib/utils';
+import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV, splitNextStepIntoTasks } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
 import { SettingsModal } from './SettingsModal';
@@ -269,11 +269,8 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   async function promoteNextStepToTask(dealId: string) {
     const deal = deals.find(d => d.id === dealId);
     if (!deal?.next_step?.trim()) { alert('此案件沒有下一步可升級'); return; }
-    // 依換行拆分,過濾空行 + 去除 A./B./- 等開頭符號
-    const lines = deal.next_step
-      .split(/\r?\n/)
-      .map(l => l.trim().replace(/^[A-Z]\.\s*|^\d+\.\s*|^[-•*]\s*/, '').trim())
-      .filter(l => l.length > 0);
+    // 拆成一項一筆(支援換行,也支援「1. A 2. B」擠在同一行的退化格式)
+    const lines = splitNextStepIntoTasks(deal.next_step);
     if (lines.length === 0) { alert('沒有可升級的任務內容'); return; }
     for (const line of lines) {
       await addTask({
@@ -649,11 +646,16 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           />
         ) : (
         <>
-        <section className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between mb-3">
+        <details open className="bg-white rounded-xl border border-slate-200 p-4">
+          <summary className="flex items-center justify-between mb-3 cursor-pointer select-none">
             <h2 className="font-semibold text-sm">漏斗階段分佈</h2>
-            {filter.stage && <button onClick={() => setFilter(f => ({ ...f, stage: '' }))} className="text-xs text-indigo-600 hover:underline">清除階段篩選</button>}
-          </div>
+            {filter.stage && (
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFilter(f => ({ ...f, stage: '' })); }}
+                className="text-xs text-indigo-600 hover:underline"
+              >清除階段篩選</button>
+            )}
+          </summary>
           <div className="space-y-2">
             {STAGES.map(stage => (
               <button key={stage.id} onClick={() => setFilter(f => ({ ...f, stage: f.stage === stage.id ? '' : stage.id }))}
@@ -679,7 +681,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500">
             總案件 <span className="font-semibold text-slate-700">{deals.length}</span> · L4+ 佔比 {l4PlusPct}% (建議 ≥25%) · Pipeline 覆蓋率建議 ≥ 3× 月目標
           </div>
-        </section>
+        </details>
 
         <section className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap gap-2 items-center">
           <select value={filter.rm} onChange={e => setFilter(f => ({ ...f, rm: e.target.value }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
