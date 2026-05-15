@@ -181,6 +181,35 @@ export interface MarketTag {
   created_at?: string;
 }
 
+// 情報 ↔ 客戶關聯(Phase 2)
+export interface IntelDealLink {
+  deal_id: string;
+  relevance_reason: string;
+  deal?: { id: string; name: string } | null;   // join 進來方便顯示
+}
+
+// 精簡客戶(餵 AI / 關聯選單用)
+export interface DealLite {
+  id: string;
+  name: string;
+  product: string | null;
+  stage: string;
+}
+
+// AI 解析後回填表單用的草稿(Phase 2)
+export interface MarketParseDraft {
+  title: string;
+  region: IntelRegion;
+  stance: IntelStance;
+  summary: string;
+  key_points: string[];
+  source_name: string;
+  author: string;
+  source_url?: string;     // 由網址解析時帶回原網址
+  tags: { category: TagCategory; name: string }[];
+  suggested_deal_links: { deal_id: string; relevance_reason: string }[];
+}
+
 export interface MarketIntel {
   id: string;
   title: string;
@@ -198,6 +227,7 @@ export interface MarketIntel {
   updated_at: string;
   // 關聯(查詢時 join 進來)
   tags?: MarketTag[];
+  deal_links?: IntelDealLink[];
   creator?: { full_name: string | null } | null;
 }
 

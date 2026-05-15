@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { MarketIntel, MarketTag } from '@/lib/types';
+import type { MarketIntel, MarketTag, DealLite } from '@/lib/types';
 import { IntelForm } from './IntelForm';
 import {
   REGION_LABEL, SOURCE_TYPE_LABEL,
@@ -14,10 +14,12 @@ export function IntelDetailView({
   intel,
   canEdit,
   existingTags,
+  deals,
 }: {
   intel: MarketIntel;
   canEdit: boolean;
   existingTags: MarketTag[];
+  deals: DealLite[];
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -48,7 +50,7 @@ export function IntelDetailView({
     return (
       <div className="space-y-3">
         <button onClick={() => setEditing(false)} className="text-sm text-slate-500 hover:underline">← 取消編輯</button>
-        <IntelForm mode="edit" initial={intel} existingTags={existingTags} />
+        <IntelForm mode="edit" initial={intel} existingTags={existingTags} deals={deals} />
       </div>
     );
   }
@@ -112,6 +114,22 @@ export function IntelDetailView({
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {(intel.deal_links?.length ?? 0) > 0 && (
+          <div>
+            <div className="text-xs font-medium text-slate-500 mb-2">🔗 關聯客戶</div>
+            <ul className="space-y-1.5">
+              {intel.deal_links!.map(l => (
+                <li key={l.deal_id} className="text-sm">
+                  <span className="font-medium text-slate-800">{l.deal?.name ?? '(無權限或已不存在的客戶)'}</span>
+                  {l.relevance_reason && (
+                    <span className="text-slate-500"> — {l.relevance_reason}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>

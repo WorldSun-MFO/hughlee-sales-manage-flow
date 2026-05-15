@@ -103,3 +103,73 @@ export const GeneratePlanResponseSchema = z.object({
 });
 
 export type GeneratePlanResponse = z.infer<typeof GeneratePlanResponseSchema>;
+
+// ====== Feature C: Market Intel Parse(金融資訊大腦)======
+export const INTEL_REGIONS = ['TW', 'US', 'JP', 'CN', 'GLOBAL'] as const;
+export const INTEL_STANCES = ['bullish', 'bearish', 'neutral', 'na'] as const;
+export const TAG_CATEGORIES = ['region', 'industry', 'ticker', 'macro', 'theme'] as const;
+
+export const MARKET_PARSE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: '一句話可掃讀的標題' },
+    region: { type: 'string', enum: [...INTEL_REGIONS] },
+    stance: { type: 'string', enum: [...INTEL_STANCES] },
+    summary: { type: 'string', description: '300–500 字摘要,完整段落' },
+    key_points: { type: 'array', items: { type: 'string' }, description: '3–6 條重點' },
+    source_name: { type: 'string', description: '出處;辨識不出給空字串' },
+    author: { type: 'string', description: '分析師/作者;辨識不出給空字串' },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          category: { type: 'string', enum: [...TAG_CATEGORIES] },
+          name: { type: 'string' },
+        },
+        required: ['category', 'name'],
+        additionalProperties: false,
+      },
+    },
+    suggested_deal_links: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          deal_id: { type: 'string', description: '必須原封不動使用清單給的 id' },
+          relevance_reason: { type: 'string' },
+        },
+        required: ['deal_id', 'relevance_reason'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['title', 'region', 'stance', 'summary', 'key_points', 'source_name', 'author', 'tags', 'suggested_deal_links'],
+  additionalProperties: false,
+} as const;
+
+export const MarketTagSuggestionSchema = z.object({
+  category: z.enum(TAG_CATEGORIES),
+  name: z.string().min(1),
+});
+
+export const MarketDealLinkSuggestionSchema = z.object({
+  deal_id: z.string().min(1),
+  relevance_reason: z.string(),
+});
+
+export const MarketParseResponseSchema = z.object({
+  title: z.string().describe('一句話可掃讀的標題'),
+  region: z.enum(INTEL_REGIONS),
+  stance: z.enum(INTEL_STANCES),
+  summary: z.string().describe('300–500 字摘要'),
+  key_points: z.array(z.string()).describe('3–6 條重點;沒有給空陣列'),
+  source_name: z.string().describe('出處;辨識不出給空字串'),
+  author: z.string().describe('分析師/作者;辨識不出給空字串'),
+  tags: z.array(MarketTagSuggestionSchema).describe('3–8 個標籤;個股必標'),
+  suggested_deal_links: z
+    .array(MarketDealLinkSuggestionSchema)
+    .describe('建議關聯客戶;寧缺勿濫,不相關給空陣列'),
+});
+
+export type MarketParseResponse = z.infer<typeof MarketParseResponseSchema>;

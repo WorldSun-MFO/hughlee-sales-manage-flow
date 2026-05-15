@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { resolveTagIds, syncIntelTags } from '@/lib/market/tags';
+import { resolveTagIds, syncIntelTags, syncIntelDealLinks } from '@/lib/market/tags';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +22,9 @@ const UpdateSchema = z.object({
   author: z.string().optional(),
   published_at: z.string().nullable().optional(),
   tags: z.array(TagSchema).optional(),
+  deal_links: z
+    .array(z.object({ deal_id: z.string().min(1), relevance_reason: z.string().optional().default('') }))
+    .optional(),
 });
 
 /** GET /api/market/intel/[id] — 讀單筆(含標籤) */
@@ -60,7 +63,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const { tags, ...fields } = body;
+  const { tags, deal_links, ...fields } = body;
   const patch: Record<string, unknown> = { ...fields };
   if ('published_at' in patch) patch.published_at = patch.published_at || null;
 
@@ -74,9 +77,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await syncIntelTags(supabase, id, tagIds);
   }
 
+  if (deal_links) {
+    await syncIntelDealLinks(supabase, id, user.id, deal_links);
+  }
+
   const { data, error: readErr } = await supabase
     .from('market_intel')
-    .select(`*, intel_tags(market_tags(id, name, category)), creator:profiles!market_intel_created_by_fkey(full_name)`)
+    .select(`*, intel_tags(market_tags(id, name, category)), intel_deal_links(relevance_reason, deal:deals(id, name)), creator:profiles!market_intel_created_by_fkey(full_name)`)
     .eq('id', id)
     .single();
 

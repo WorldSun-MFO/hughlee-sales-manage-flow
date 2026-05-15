@@ -81,3 +81,34 @@ export async function syncIntelTags(
     .from('intel_tags')
     .insert(tagIds.map(tag_id => ({ intel_id: intelId, tag_id })));
 }
+
+export interface DealLinkInput {
+  deal_id: string;
+  relevance_reason?: string;
+}
+
+/**
+ * 同步一筆情報的「關聯客戶」:刪掉舊的、補上新的。
+ * intel_deal_links 的 RLS(can_access_deal)會擋掉使用者無權限的 deal,
+ * 因此逐筆 insert、容忍個別失敗,避免一筆壞的拖垮整批。
+ */
+export async function syncIntelDealLinks(
+  supabase: SupabaseClient,
+  intelId: string,
+  userId: string,
+  links: DealLinkInput[]
+): Promise<void> {
+  await supabase.from('intel_deal_links').delete().eq('intel_id', intelId);
+  const seen = new Set<string>();
+  for (const l of links) {
+    const deal_id = l.deal_id?.trim();
+    if (!deal_id || seen.has(deal_id)) continue;
+    seen.add(deal_id);
+    await supabase.from('intel_deal_links').insert({
+      intel_id: intelId,
+      deal_id,
+      relevance_reason: (l.relevance_reason ?? '').trim(),
+      linked_by: userId,
+    });
+  }
+}
