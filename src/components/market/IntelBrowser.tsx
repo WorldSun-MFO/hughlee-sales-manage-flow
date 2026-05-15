@@ -47,6 +47,12 @@ export function IntelBrowser({ initialIntel }: { initialIntel: MarketIntel[] }) 
           className="h-9 flex-1 min-w-[200px] rounded-lg border border-slate-200 px-3 text-sm focus:border-indigo-400 focus:outline-none"
         />
         <Link
+          href="/market/synthesis"
+          className="inline-flex items-center gap-1 h-9 px-3 border border-indigo-200 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-50"
+        >
+          📊 多空綜合
+        </Link>
+        <Link
           href="/market/new"
           className="inline-flex items-center gap-1 h-9 px-3 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
         >

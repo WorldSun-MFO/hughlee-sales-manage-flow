@@ -217,3 +217,33 @@ export const ClientAmmoResponseSchema = z.object({
 });
 
 export type ClientAmmoResponse = z.infer<typeof ClientAmmoResponseSchema>;
+
+// ====== Feature E: Market Synthesis(多券商多空綜合)======
+export const SYNTHESIS_STANCES = ['bullish', 'bearish', 'neutral', 'mixed'] as const;
+
+export const MARKET_SYNTHESIS_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    consensus_stance: { type: 'string', enum: [...SYNTHESIS_STANCES] },
+    summary: { type: 'string', description: '200–400 字綜合判斷' },
+    bull_points: { type: 'array', items: { type: 'string' }, description: '多方核心論點;沒有給空陣列' },
+    bear_points: { type: 'array', items: { type: 'string' }, description: '空方核心論點;沒有給空陣列' },
+    divergence: { type: 'string', description: '多空最關鍵分歧點(一兩句)' },
+    watch_items: { type: 'array', items: { type: 'string' }, description: '要追蹤的訊號/數據/時間點 2–4 條' },
+    wsg_implication: { type: 'string', description: '對 WORLDSUN 客戶/商品的意涵(務實,不喊單)' },
+  },
+  required: ['consensus_stance', 'summary', 'bull_points', 'bear_points', 'divergence', 'watch_items', 'wsg_implication'],
+  additionalProperties: false,
+} as const;
+
+export const MarketSynthesisResponseSchema = z.object({
+  consensus_stance: z.enum(SYNTHESIS_STANCES),
+  summary: z.string(),
+  bull_points: z.array(z.string()),
+  bear_points: z.array(z.string()),
+  divergence: z.string(),
+  watch_items: z.array(z.string()),
+  wsg_implication: z.string(),
+});
+
+export type MarketSynthesisResponse = z.infer<typeof MarketSynthesisResponseSchema>;
