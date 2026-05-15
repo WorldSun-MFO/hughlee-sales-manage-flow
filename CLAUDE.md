@@ -113,15 +113,18 @@ supabase/
 ## 開發指令
 
 ```bash
-npm run dev        # 本機開發(注意:Hugh 的機器未裝 Node,實際以 Vercel build 驗證)
-npm run build      # 生產建置
+npm install        # 首次 / 換相依套件後必跑(repo 預設無 node_modules)
+npm run dev        # 本機開發
+npm run build      # 生產建置(等同 Vercel 會跑的;含 ESLint)
 npm run start      # 啟動生產 server
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
 ```
 
-> Hugh 的 MacBook Air 未安裝 Node.js。所有驗證以「推上 main → Vercel 自動建置」為準。
-> 修改後請務必確認 TypeScript / build 能在 Vercel 通過再交付。
+> **發布前驗證流程(必遵守)**:本機已安裝 Node(`/usr/local/bin/node`)。
+> 任何改動 **推 main 前一定先在本機跑 `npm run typecheck` 且 `npm run build`**,
+> 兩者皆綠燈才 commit / push。**不要盲推 Vercel 才發現 build 失敗。**
+> 純文件(.md)變更可略過 build。Vercel 仍會在 push 後自動建置部署作為最終確認。
 
 ---
 
