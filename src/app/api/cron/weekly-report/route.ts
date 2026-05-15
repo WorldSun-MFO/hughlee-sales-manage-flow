@@ -59,17 +59,21 @@ export async function GET(req: Request) {
     const fromAddress = process.env.RESEND_FROM_ADDRESS || 'WORLDSUN Pipeline <onboarding@resend.dev>';
     const replyTo = process.env.RESEND_REPLY_TO || 'hughlee@wsgfo.com';
 
-    const results: Array<{ email: string; ok: boolean; error?: string }> = [];
+    const results: Array<{ email: string; ok: boolean; error?: string; id?: string }> = [];
     for (const r of recipients) {
       try {
-        await resend.emails.send({
+        const { data, error: resendErr } = await resend.emails.send({
           from: fromAddress,
           to: r.email,
           replyTo,
           subject: `📊 WORLDSUN Pipeline 週報 · ${stats.dateRange}`,
           html: html.replace('{{NAME}}', r.full_name || r.email),
         });
-        results.push({ email: r.email, ok: true });
+        if (resendErr) {
+          results.push({ email: r.email, ok: false, error: `${resendErr.name}: ${resendErr.message}` });
+        } else {
+          results.push({ email: r.email, ok: true, id: data?.id });
+        }
       } catch (err) {
         results.push({ email: r.email, ok: false, error: (err as Error).message });
       }
