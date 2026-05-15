@@ -25,7 +25,8 @@ export default async function Home() {
       score_notes(*),
       stage_checklist(*),
       deal_questions(*),
-      comments(id, deal_id, author_id, body, is_system, created_at),
+      deal_attachments(*),
+      comments(id, deal_id, author_id, body, is_system, is_raw, created_at),
       rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)
     `)
     .order('last_updated', { ascending: false })

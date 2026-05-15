@@ -1,12 +1,13 @@
 'use client';
 import { useState } from 'react';
-import type { Deal, ParseInteractionSuggestion, Scores, StageId } from '@/lib/types';
+import type { Deal, DealAttachment, ParseInteractionSuggestion, Scores, StageId } from '@/lib/types';
 import { MEDDIC } from '@/lib/constants';
 
 interface Props {
   deal: Deal;
   onClose: () => void;
   onSaveRawText: (rawText: string) => Promise<void>;     // 保留原始未修改文字
+  onUploadAttachment: (file: File) => Promise<DealAttachment>;
   onApply: (patch: {
     scores?: Partial<Scores>;
     next_step?: string | null;
@@ -16,7 +17,24 @@ interface Props {
   }) => Promise<void>;
 }
 
-export function AIChatModal({ deal, onClose, onSaveRawText, onApply }: Props) {
+export function AIChatModal({ deal, onClose, onSaveRawText, onUploadAttachment, onApply }: Props) {
+  const [pendingFiles, setPendingFiles] = useState<DealAttachment[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  async function handleAttach(files: FileList | null) {
+    if (!files) return;
+    setUploadingFile(true);
+    try {
+      for (const f of Array.from(files)) {
+        if (f.size > 52428800) { alert(`「${f.name}」超過 50 MB,跳過`); continue; }
+        const att = await onUploadAttachment(f);
+        setPendingFiles(prev => [...prev, att]);
+      }
+    } catch (err) {
+      alert('上傳失敗:' + (err as Error).message);
+    } finally {
+      setUploadingFile(false);
+    }
+  }
   const [userText, setUserText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,8 +166,37 @@ export function AIChatModal({ deal, onClose, onSaveRawText, onApply }: Props) {
                 />
               </label>
               <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
-                💡 <b>原話會被完整保留</b>(時間軸 + 對話原稿區),AI 摘要另存。建議建議可<b>逐項編輯</b>後再套用。
+                💡 <b>原話會被完整保留</b>(時間軸 + 對話原稿區),AI 摘要另存。建議可<b>逐項編輯</b>後再套用。<br/>
+                📎 可附上照片/合約/語音檔(自動存到「📂 客戶檔案」區)。
               </div>
+
+              {/* 📎 附檔上傳 */}
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50">
+                    📎 加上檔案或圖片
+                    <input
+                      type="file"
+                      multiple
+                      onChange={e => handleAttach(e.target.files)}
+                      disabled={uploadingFile}
+                      className="hidden"
+                    />
+                  </label>
+                  {uploadingFile && <span className="text-xs text-slate-500">⏳ 上傳中...</span>}
+                </div>
+                {pendingFiles.length > 0 && (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {pendingFiles.map(f => (
+                      <li key={f.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded">
+                        {f.mime_type.startsWith('image/') ? '🖼' : f.mime_type.includes('pdf') ? '📄' : '📎'}
+                        <span className="max-w-[160px] truncate">{f.file_name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               <button
                 onClick={analyze}
                 disabled={loading || !userText.trim()}

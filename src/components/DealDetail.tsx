@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { STAGES, MEDDIC, CHECKLIST, STAGE_PROMPTS, QUESTION_BANK, TIER_STYLES } from '@/lib/constants';
-import type { Deal, DealPlan, PainPoint, Profile, Scores, Settings, StageId, Tier } from '@/lib/types';
+import type { Deal, DealAttachment, DealPlan, PainPoint, Profile, Scores, Settings, StageId, Tier } from '@/lib/types';
 import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage, contactOverdue, contactDaysSince, getTierFromAum } from '@/lib/utils';
 import { AIChatModal } from './AIChatModal';
 import { PlanModal } from './PlanModal';
@@ -24,6 +24,9 @@ interface Props {
   onDelete: () => void;
   onSaveRawText: (rawText: string) => Promise<void>;
   onPromoteNextStep: () => Promise<void>;
+  onUploadAttachment: (file: File) => Promise<DealAttachment>;
+  onDeleteAttachment: (id: string) => Promise<void>;
+  onGetAttachmentUrl: (storagePath: string) => Promise<string>;
   onApplyAISuggestion: (patch: {
     scores?: Partial<Scores>;
     next_step?: string | null;
@@ -38,7 +41,8 @@ interface Props {
 export function DealDetail({
   deal, settings, allProfiles, profile, painPoints, onClose,
   onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onToggleQuestion, onAddComment, onAdvance, onDelete,
-  onSaveRawText, onPromoteNextStep, onApplyAISuggestion, onSavePlan, onTogglePlanStep,
+  onSaveRawText, onPromoteNextStep, onUploadAttachment, onDeleteAttachment, onGetAttachmentUrl,
+  onApplyAISuggestion, onSavePlan, onTogglePlanStep,
 }: Props) {
   const [newComment, setNewComment] = useState('');
   const [showAIChat, setShowAIChat] = useState(false);
@@ -530,6 +534,14 @@ export function DealDetail({
             </div>
           </div>
 
+          {/* 📂 客戶檔案區(Sprint C) */}
+          <AttachmentsSection
+            attachments={deal.deal_attachments ?? []}
+            onUpload={onUploadAttachment}
+            onDelete={onDeleteAttachment}
+            onGetUrl={onGetAttachmentUrl}
+          />
+
           <div className="pt-3 border-t border-slate-200">
             <button onClick={() => { if (confirm(`刪除「${deal.name}」?此動作無法復原`)) onDelete(); }} className="text-xs text-rose-600 hover:underline">刪除此案件</button>
           </div>
@@ -541,6 +553,7 @@ export function DealDetail({
           deal={deal}
           onClose={() => setShowAIChat(false)}
           onSaveRawText={async (raw) => { await onSaveRawText(raw); }}
+          onUploadAttachment={onUploadAttachment}
           onApply={async (patch) => { await onApplyAISuggestion(patch); setShowAIChat(false); }}
         />
       )}
@@ -552,5 +565,110 @@ export function DealDetail({
         />
       )}
     </>
+  );
+}
+
+// ===== Attachments Section (Sprint C) =====
+function AttachmentsSection({ attachments, onUpload, onDelete, onGetUrl }: {
+  attachments: DealAttachment[];
+  onUpload: (file: File) => Promise<DealAttachment>;
+  onDelete: (id: string) => Promise<void>;
+  onGetUrl: (storagePath: string) => Promise<string>;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    // 預載圖片類型的 signed URL(其他類型點下載再產)
+    const imgs = attachments.filter(a => a.mime_type.startsWith('image/'));
+    imgs.forEach(async (a) => {
+      if (!imageUrls[a.id]) {
+        const url = await onGetUrl(a.storage_path);
+        setImageUrls(prev => ({ ...prev, [a.id]: url }));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachments]);
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    setUploading(true);
+    try {
+      for (const f of Array.from(files)) {
+        if (f.size > 52428800) {
+          setError(`「${f.name}」超過 50 MB 上限,跳過`);
+          continue;
+        }
+        await onUpload(f);
+      }
+    } catch (err) {
+      setError('上傳失敗:' + (err as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDownload(att: DealAttachment) {
+    const url = await onGetUrl(att.storage_path);
+    if (url) window.open(url, '_blank');
+  }
+
+  const fmtSize = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
+
+  return (
+    <div className="mt-3">
+      <h3 className="font-semibold text-sm mb-2 flex items-center justify-between">
+        <span>📂 客戶檔案 <span className="text-xs text-slate-400 font-normal">({attachments.length} 件)</span></span>
+        <label className="text-xs text-indigo-600 hover:text-indigo-800 cursor-pointer">
+          📎 上傳檔案
+          <input
+            type="file"
+            multiple
+            onChange={e => handleFiles(e.target.files)}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+      </h3>
+      {error && <div className="mb-2 text-xs text-rose-600 bg-rose-50 p-2 rounded">{error}</div>}
+      {uploading && <div className="mb-2 text-xs text-slate-500">⏳ 上傳中...</div>}
+      {attachments.length === 0 ? (
+        <div className="text-xs text-slate-400 bg-slate-50 p-3 rounded text-center">
+          尚無檔案。從 AI 助手或這裡上傳照片/文件/合約。
+        </div>
+      ) : (
+        <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {attachments.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(a => {
+            const isImage = a.mime_type.startsWith('image/');
+            return (
+              <li key={a.id} className="border border-slate-200 rounded-lg p-2 bg-white hover:border-indigo-300 transition relative group">
+                {isImage && imageUrls[a.id] ? (
+                  <button onClick={() => handleDownload(a)} className="block w-full">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imageUrls[a.id]} alt={a.file_name} className="w-full h-24 object-cover rounded" />
+                  </button>
+                ) : (
+                  <button onClick={() => handleDownload(a)} className="w-full h-24 flex items-center justify-center bg-slate-50 rounded text-3xl">
+                    {a.mime_type.includes('pdf') ? '📄' : a.mime_type.startsWith('video/') ? '🎬' : a.mime_type.startsWith('audio/') ? '🎵' : '📎'}
+                  </button>
+                )}
+                <div className="mt-1 text-[11px] truncate" title={a.file_name}>{a.file_name}</div>
+                <div className="text-[10px] text-slate-400 flex justify-between">
+                  <span>{fmtSize(a.size_bytes)}</span>
+                  <span>{a.created_at.slice(5, 10)}</span>
+                </div>
+                <button
+                  onClick={() => { if (confirm(`刪除「${a.file_name}」?`)) onDelete(a.id); }}
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-100 text-rose-600 opacity-0 group-hover:opacity-100 transition text-xs flex items-center justify-center"
+                  title="刪除"
+                >×</button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

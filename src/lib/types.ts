@@ -12,6 +12,19 @@ export interface TierConfigItem {
 // 三層權限:RM 只看自己;Team Lead 看自己團隊;Admin 看全部
 export type Role = 'rm' | 'team_lead' | 'admin';
 
+// 檔案附件(Sprint C)
+export interface DealAttachment {
+  id: string;
+  deal_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string | null;
+  comment_id: string | null;
+  created_at: string;
+}
+
 // 任務追蹤(Sprint B)
 export type TaskStatus = 'todo' | 'doing' | 'done';
 export type TaskPriority = 'low' | 'normal' | 'high';
@@ -115,6 +128,7 @@ export interface Deal {
   stage_checklist?: ChecklistItem[];
   comments?: Comment[];
   deal_questions?: DealQuestion[];
+  deal_attachments?: DealAttachment[];
   rm?: Profile | null;
 }
 

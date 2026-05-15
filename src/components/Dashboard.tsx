@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { STAGES, TIER_STYLES } from '@/lib/constants';
-import type { Deal, DealPlan, PainPoint, Profile, Role, Settings, StageId, Scores, Task, TaskPriority, Team, Tier } from '@/lib/types';
+import type { Deal, DealAttachment, DealPlan, PainPoint, Profile, Role, Settings, StageId, Scores, Task, TaskPriority, Team, Tier } from '@/lib/types';
 import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
@@ -54,6 +54,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pain_points' }, () => refetchPainPoints())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, () => refetchTeams())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => refetchTasks())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deal_attachments' }, () => refetch())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -65,7 +66,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     refetchRef.current = window.setTimeout(async () => {
       const { data } = await supabase
         .from('deals')
-        .select('*, scores(*), score_notes(*), stage_checklist(*), deal_questions(*), comments(id, deal_id, author_id, body, is_system, created_at), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)')
+        .select('*, scores(*), score_notes(*), stage_checklist(*), deal_questions(*), deal_attachments(*), comments(id, deal_id, author_id, body, is_system, is_raw, created_at), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)')
         .order('last_updated', { ascending: false });
       if (data) setDeals(data as Deal[]);
     }, 250);
@@ -219,6 +220,49 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   async function deleteTask(id: string) {
     setTasks(ts => ts.filter(t => t.id !== id));
     await supabase.from('tasks').delete().eq('id', id);
+  }
+
+  // ===== 檔案附件 CRUD(Sprint C) =====
+  async function uploadAttachment(dealId: string, file: File): Promise<DealAttachment> {
+    const ext = file.name.split('.').pop() ?? 'bin';
+    const storagePath = `${dealId}/${crypto.randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('deal-attachments')
+      .upload(storagePath, file, { contentType: file.type });
+    if (upErr) throw upErr;
+    const { data, error } = await supabase.from('deal_attachments')
+      .insert({
+        deal_id: dealId,
+        storage_path: storagePath,
+        file_name: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+        uploaded_by: profile.id,
+      })
+      .select().single();
+    if (error) throw error;
+    setDeals(prev => prev.map(d => d.id === dealId
+      ? { ...d, deal_attachments: [...(d.deal_attachments ?? []), data as DealAttachment] }
+      : d));
+    return data as DealAttachment;
+  }
+
+  async function deleteAttachment(attachmentId: string) {
+    const att = deals.flatMap(d => d.deal_attachments ?? []).find(a => a.id === attachmentId);
+    if (!att) return;
+    setDeals(prev => prev.map(d => ({
+      ...d,
+      deal_attachments: (d.deal_attachments ?? []).filter(a => a.id !== attachmentId),
+    })));
+    await supabase.storage.from('deal-attachments').remove([att.storage_path]);
+    await supabase.from('deal_attachments').delete().eq('id', attachmentId);
+  }
+
+  async function getAttachmentUrl(storagePath: string): Promise<string> {
+    const { data } = await supabase.storage
+      .from('deal-attachments')
+      .createSignedUrl(storagePath, 3600);
+    return data?.signedUrl ?? '';
   }
 
   // 把 deal.next_step 一鍵升級成任務(從 DealDetail 觸發)
@@ -715,6 +759,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           onDelete={() => deleteDeal(currentDeal.id)}
           onSaveRawText={(raw) => saveRawText(currentDeal.id, raw)}
           onPromoteNextStep={() => promoteNextStepToTask(currentDeal.id)}
+          onUploadAttachment={(file) => uploadAttachment(currentDeal.id, file)}
+          onDeleteAttachment={(id) => deleteAttachment(id)}
+          onGetAttachmentUrl={getAttachmentUrl}
           onApplyAISuggestion={(patch) => applyAISuggestion(currentDeal.id, patch)}
           onSavePlan={(plan, td) => savePlan(currentDeal.id, plan, td)}
           onTogglePlanStep={(stepId) => togglePlanStep(currentDeal.id, stepId)}
