@@ -24,6 +24,7 @@ interface Props {
   onDelete: () => void;
   onSaveRawText: (rawText: string) => Promise<void>;
   onPromoteNextStep: () => Promise<void>;
+  onPromotePlanFocus: (opts: { title: string; targetDate?: string | null; sourceRef?: string }) => Promise<void>;
   onUploadAttachment: (file: File) => Promise<DealAttachment>;
   onDeleteAttachment: (id: string) => Promise<void>;
   onGetAttachmentUrl: (storagePath: string) => Promise<string>;
@@ -41,7 +42,7 @@ interface Props {
 export function DealDetail({
   deal, settings, allProfiles, profile, painPoints, onClose,
   onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onToggleQuestion, onAddComment, onAdvance, onDelete,
-  onSaveRawText, onPromoteNextStep, onUploadAttachment, onDeleteAttachment, onGetAttachmentUrl,
+  onSaveRawText, onPromoteNextStep, onPromotePlanFocus, onUploadAttachment, onDeleteAttachment, onGetAttachmentUrl,
   onApplyAISuggestion, onSavePlan, onTogglePlanStep,
 }: Props) {
   const [newComment, setNewComment] = useState('');
@@ -461,23 +462,87 @@ export function DealDetail({
           <div>
             <label className="block">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">🎯 下一步具體動作</span>
+                <span className="text-xs text-slate-500">🎯 下一步具體動作 <span className="text-slate-400">(多項用 Enter 分行,各成獨立任務)</span></span>
                 {deal.next_step?.trim() && (
                   <button
                     onClick={onPromoteNextStep}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
-                    title="把這個下一步升級成可追蹤的任務(在「任務管理」頁面看得到、可指派、可標記完成)"
-                  >📋 加到任務管理</button>
+                    className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline whitespace-nowrap"
+                    title="每行各自變成一筆任務,可分別指派"
+                  >📋 全部加到任務管理</button>
                 )}
               </div>
-              <input
-                type="text"
+              <textarea
                 defaultValue={deal.next_step ?? ''}
                 onBlur={(e) => onPatchDeal({ next_step: e.target.value })}
-                placeholder="要見誰 / 交付什麼 / 什麼時候"
-                className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                placeholder="A. 約客戶下週見面&#10;B. 準備保單比較表&#10;C. 約會計師討論稅務"
+                rows={3}
+                className="mt-1 w-full px-2 py-1.5 border border-slate-200 rounded text-sm resize-vertical font-mono"
               />
             </label>
+
+            {/* 🎯 已儲存的成交路徑(可逐項升級成任務) */}
+            {deal.plan && deal.plan.steps && deal.plan.steps.length > 0 && (
+              <details className="mt-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <summary className="cursor-pointer px-3 py-2 font-semibold text-sm text-indigo-900 select-none">
+                  🎯 AI 成交路徑 ({deal.plan.steps.length} 步) <span className="text-xs font-normal text-indigo-700">· 目標 {deal.plan.target_date}</span>
+                </summary>
+                <div className="px-3 pb-3 space-y-2">
+                  <div className="text-xs text-slate-600 bg-white p-2 rounded border border-indigo-100">
+                    💡 <b>核心動作</b>(具體可執行)可一鍵升級為任務,<b>建議話術</b>和<b>風險</b>僅供 RM 參考,不會列入任務管理。
+                  </div>
+                  {deal.plan.steps.map((step, i) => (
+                    <div key={step.id} className="bg-white border border-indigo-100 rounded p-2">
+                      <div className="flex items-start gap-2 mb-1">
+                        <div className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[11px]">{i + 1}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-xs">{step.title}</div>
+                          <div className="text-[11px] text-slate-500">{step.target_date} · {step.stage_transition}</div>
+                        </div>
+                      </div>
+                      {step.focus.length > 0 && (
+                        <div className="mt-1.5">
+                          <div className="text-[11px] font-semibold text-slate-600 mb-0.5">🎯 核心動作(可升級為任務)</div>
+                          <ul className="space-y-0.5">
+                            {step.focus.map((f, j) => (
+                              <li key={j} className="flex items-start gap-1 text-[12px]">
+                                <span className="text-slate-400 mt-0.5">•</span>
+                                <span className="flex-1 text-slate-700">{f}</span>
+                                <button
+                                  onClick={() => onPromotePlanFocus({ title: f, targetDate: step.target_date, sourceRef: `${step.id}-${j}` })}
+                                  className="text-[10px] text-indigo-600 hover:text-indigo-800 hover:underline whitespace-nowrap"
+                                  title={`建立任務 (預設指派給 RM,截止日 ${step.target_date})`}
+                                >📋 加入任務</button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {step.talking_points.length > 0 && (
+                        <details className="mt-1.5">
+                          <summary className="text-[11px] text-slate-500 cursor-pointer select-none">💬 建議話術(僅參考,{step.talking_points.length} 條)</summary>
+                          <ul className="mt-1 pl-2 space-y-0.5 text-[11px] text-slate-600 italic">
+                            {step.talking_points.map((t, j) => (
+                              <li key={j} className="flex gap-1"><span className="text-slate-400">•</span>「{t}」</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                      {step.risks.length > 0 && (
+                        <details className="mt-1.5">
+                          <summary className="text-[11px] text-rose-600 cursor-pointer select-none">⚠️ 風險(僅參考,{step.risks.length} 條)</summary>
+                          <ul className="mt-1 pl-2 space-y-0.5 text-[11px] text-rose-700">
+                            {step.risks.map((r, j) => (
+                              <li key={j} className="flex gap-1"><span>•</span>{r}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
             {/* 對話原稿(is_raw=true 的註解,你跟客戶的真實對話) */}
             {(() => {
               const rawComments = (deal.comments ?? [])

@@ -265,15 +265,39 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     return data?.signedUrl ?? '';
   }
 
-  // 把 deal.next_step 一鍵升級成任務(從 DealDetail 觸發)
+  // 把 deal.next_step 多行內容拆成多筆獨立任務(從 DealDetail 觸發)
   async function promoteNextStepToTask(dealId: string) {
     const deal = deals.find(d => d.id === dealId);
     if (!deal?.next_step?.trim()) { alert('此案件沒有下一步可升級'); return; }
+    // 依換行拆分,過濾空行 + 去除 A./B./- 等開頭符號
+    const lines = deal.next_step
+      .split(/\r?\n/)
+      .map(l => l.trim().replace(/^[A-Z]\.\s*|^\d+\.\s*|^[-•*]\s*/, '').trim())
+      .filter(l => l.length > 0);
+    if (lines.length === 0) { alert('沒有可升級的任務內容'); return; }
+    for (const line of lines) {
+      await addTask({
+        title: line,
+        deal_id: dealId,
+        assignee_id: deal.rm_id,
+        due_date: null,
+        priority: 'normal',
+      });
+    }
+    alert(`已建立 ${lines.length} 筆任務`);
+  }
+
+  // 把 Plan 的單一 focus 動作升級成任務(從 DealDetail 的 Plan 顯示區觸發)
+  async function promotePlanFocus(dealId: string, opts: {
+    title: string; targetDate?: string | null; sourceRef?: string;
+  }) {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
     await addTask({
-      title: deal.next_step.trim(),
+      title: opts.title,
       deal_id: dealId,
       assignee_id: deal.rm_id,
-      due_date: null,
+      due_date: opts.targetDate ?? null,
       priority: 'normal',
     });
   }
@@ -759,6 +783,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           onDelete={() => deleteDeal(currentDeal.id)}
           onSaveRawText={(raw) => saveRawText(currentDeal.id, raw)}
           onPromoteNextStep={() => promoteNextStepToTask(currentDeal.id)}
+          onPromotePlanFocus={(opts) => promotePlanFocus(currentDeal.id, opts)}
           onUploadAttachment={(file) => uploadAttachment(currentDeal.id, file)}
           onDeleteAttachment={(id) => deleteAttachment(id)}
           onGetAttachmentUrl={getAttachmentUrl}
