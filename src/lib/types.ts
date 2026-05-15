@@ -168,6 +168,39 @@ export interface DealPlan {
   steps: PlanStep[];
 }
 
+// ====== 金融資訊大腦 / Market Intel(Phase 1)======
+export type IntelSourceType = 'broker_research' | 'media' | 'filing' | 'internal';
+export type IntelRegion = 'TW' | 'US' | 'JP' | 'CN' | 'GLOBAL';
+export type IntelStance = 'bullish' | 'bearish' | 'neutral' | 'na';
+export type TagCategory = 'region' | 'industry' | 'ticker' | 'macro' | 'theme';
+
+export interface MarketTag {
+  id: string;
+  name: string;
+  category: TagCategory;
+  created_at?: string;
+}
+
+export interface MarketIntel {
+  id: string;
+  title: string;
+  source_type: IntelSourceType;
+  source_name: string;
+  source_url: string;
+  region: IntelRegion;
+  summary: string;
+  key_points: string[];
+  stance: IntelStance;
+  author: string;
+  published_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  // 關聯(查詢時 join 進來)
+  tags?: MarketTag[];
+  creator?: { full_name: string | null } | null;
+}
+
 // Feature A — AI 解析互動的回應
 export interface ParseInteractionSuggestion {
   summary: string;
