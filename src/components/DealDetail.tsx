@@ -6,6 +6,7 @@ import type { Deal, DealAttachment, DealPlan, PainPoint, Profile, Scores, Settin
 import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage, contactOverdue, contactDaysSince, getTierFromAum } from '@/lib/utils';
 import { AIChatModal } from './AIChatModal';
 import { PlanModal } from './PlanModal';
+import { ClientAmmoCard } from './market/ClientAmmoCard';
 
 interface Props {
   deal: Deal;
@@ -106,6 +107,8 @@ export function DealDetail({
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-4">
+          <ClientAmmoCard dealId={deal.id} dealName={deal.name} />
+
           {/* Stage prompt — what to do at this stage */}
           {STAGE_PROMPTS[deal.stage] && (
             <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-200 rounded-lg p-3 text-sm">

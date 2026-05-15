@@ -173,3 +173,45 @@ export const MarketParseResponseSchema = z.object({
 });
 
 export type MarketParseResponse = z.infer<typeof MarketParseResponseSchema>;
+
+// ====== Feature D: Client Talking Points(客戶彈藥庫)======
+export const CLIENT_AMMO_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    has_relevant: { type: 'boolean', description: '是否有貼切可聊的市場話題' },
+    overall: { type: 'string', description: '一句話總評:這客戶現在市場面可切入的角度;沒有就說明為何沒有' },
+    talking_points: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          hook: { type: 'string', description: '話題切入點(標題式)' },
+          angle: { type: 'string', description: '為何對這位客戶有意義(扣商品/階段/痛點)' },
+          opener: { type: 'string', description: 'RM 可直接講的開場白一句' },
+          intel_id: { type: 'string', description: '依據哪則情報;必須原樣使用清單給的 id' },
+          intel_title: { type: 'string', description: '該情報標題' },
+        },
+        required: ['hook', 'angle', 'opener', 'intel_id', 'intel_title'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['has_relevant', 'overall', 'talking_points'],
+  additionalProperties: false,
+} as const;
+
+export const ClientTalkingPointSchema = z.object({
+  hook: z.string(),
+  angle: z.string(),
+  opener: z.string(),
+  intel_id: z.string(),
+  intel_title: z.string(),
+});
+
+export const ClientAmmoResponseSchema = z.object({
+  has_relevant: z.boolean(),
+  overall: z.string(),
+  talking_points: z.array(ClientTalkingPointSchema).describe('通常 2–4 個,最多 5;不相關給空陣列'),
+});
+
+export type ClientAmmoResponse = z.infer<typeof ClientAmmoResponseSchema>;
