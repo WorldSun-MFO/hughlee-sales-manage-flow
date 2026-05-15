@@ -42,10 +42,17 @@ export async function POST(request: Request) {
   const dealId = body.dealId?.trim();
   if (!dealId) return NextResponse.json({ error: '缺少 dealId' }, { status: 400 });
 
-  // 客戶背景(RLS 自動把關:無權限會查不到)
+  // 客戶背景(RLS 自動把關:無權限會查不到)。抓豐富脈絡讓 AI 切題:
+  // MEDDIC 分數、各欄位痛點/證據筆記、近期互動註解、已釐清題目、下一步。
   const { data: deal, error: dealErr } = await supabase
     .from('deals')
-    .select('id, name, product, stage, tier, aum_usd')
+    .select(`
+      id, name, product, stage, tier, aum_usd, next_step,
+      scores(*),
+      score_notes(field, evidence, next_action),
+      deal_questions(question_key, answered),
+      comments(body, created_at)
+    `)
     .eq('id', dealId)
     .single();
 
@@ -85,9 +92,7 @@ export async function POST(request: Request) {
   const allowedIntelIds = new Set(candidates.map(c => c.id));
 
   const userMessage = `【客戶背景】
-客戶名:${deal.name}
-目標商品:${deal.product || '(未定)'}
-階段:${deal.stage} | 等級:${deal.tier ?? '未分級'} | AUM:$${Number(deal.aum_usd ?? 0).toLocaleString('en-US')}
+${compactClientContext(deal as Record<string, unknown>)}
 
 【候選情報清單(intel_id | 標題 | 地區 | 立場 | 標籤 | 摘要)】
 ${candidates.map(intelLine).join('\n')}
@@ -162,4 +167,48 @@ function extractJSON(text: string): string {
   const end = text.lastIndexOf('}');
   if (start >= 0 && end > start) return text.slice(start, end + 1);
   return text.trim();
+}
+
+const FIELD_LABEL: Record<string, string> = {
+  m: 'M 量化指標', e: 'E 決策者', d1: 'D1 決策標準', d2: 'D2 決策流程',
+  p: 'P 文件流程', i: 'I 痛點', c1: 'C1 倡議者', c2: 'C2 競爭',
+};
+
+/** 把客戶完整脈絡壓成精簡文字餵 AI(痛點/MEDDIC/互動史 → 切題關鍵)。 */
+function compactClientContext(deal: Record<string, unknown>): string {
+  const s = deal.scores as Record<string, number> | null;
+  const notes = (deal.score_notes as Array<{ field: string; evidence: string; next_action: string }> | null) ?? [];
+  const questions = (deal.deal_questions as Array<{ question_key: string; answered: boolean }> | null) ?? [];
+  const comments = (deal.comments as Array<{ body: string; created_at: string }> | null) ?? [];
+
+  const scoreLine = s
+    ? `MEDDIC: M${s.m}/E${s.e}/D1:${s.d1}/D2:${s.d2}/P${s.p}/I${s.i}/C1:${s.c1}/C2:${s.c2} 總分${(s.m ?? 0)+(s.e ?? 0)+(s.d1 ?? 0)+(s.d2 ?? 0)+(s.p ?? 0)+(s.i ?? 0)+(s.c1 ?? 0)+(s.c2 ?? 0)}/80`
+    : 'MEDDIC: 尚未評分';
+
+  const noteLines = notes
+    .filter(n => n.evidence || n.next_action)
+    .map(n => `- [${FIELD_LABEL[n.field] ?? n.field}] ${n.evidence}${n.next_action ? `(下一步:${n.next_action})` : ''}`)
+    .join('\n') || '(無筆記)';
+
+  const askedKeys = questions.filter(q => q.answered).map(q => q.question_key);
+  const askedLine = askedKeys.length > 0 ? askedKeys.join(', ') : '(無)';
+
+  const recentComments = comments
+    .slice(-6)
+    .map(c => `- [${(c.created_at ?? '').slice(0, 10)}] ${c.body}`)
+    .join('\n') || '(無互動紀錄)';
+
+  return `客戶代號:${deal.name}
+目標商品:${deal.product || '(未定)'}
+階段:${deal.stage} | 等級:${deal.tier ?? '未分級'} | AUM:$${Number(deal.aum_usd ?? 0).toLocaleString('en-US')}
+目前下一步:${deal.next_step || '(無)'}
+${scoreLine}
+
+【各項痛點 / 證據筆記(切題關鍵,尤其 I 痛點)】
+${noteLines}
+
+【已釐清題目 key】${askedLine}
+
+【近期互動註解】
+${recentComments}`;
 }

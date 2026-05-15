@@ -187,11 +187,12 @@ export const CLIENT_AMMO_JSON_SCHEMA = {
         properties: {
           hook: { type: 'string', description: '話題切入點(標題式)' },
           angle: { type: 'string', description: '為何對這位客戶有意義(扣商品/階段/痛點)' },
-          opener: { type: 'string', description: 'RM 可直接講的開場白一句' },
+          opener: { type: 'string', description: 'Hugh 拆段風格多則短訊息,以 \\n 分行,第一則含稱呼+hook' },
           intel_id: { type: 'string', description: '依據哪則情報;必須原樣使用清單給的 id' },
           intel_title: { type: 'string', description: '該情報標題' },
+          caution: { type: 'string', description: '碰到紅線時的提醒(需 Hugh 親自確認/手寫的原因);無則空字串' },
         },
-        required: ['hook', 'angle', 'opener', 'intel_id', 'intel_title'],
+        required: ['hook', 'angle', 'opener', 'intel_id', 'intel_title', 'caution'],
         additionalProperties: false,
       },
     },
@@ -203,9 +204,10 @@ export const CLIENT_AMMO_JSON_SCHEMA = {
 export const ClientTalkingPointSchema = z.object({
   hook: z.string(),
   angle: z.string(),
-  opener: z.string(),
+  opener: z.string().describe('Hugh 拆段風格,多則短訊息以 \\n 分行'),
   intel_id: z.string(),
   intel_title: z.string(),
+  caution: z.string().describe('紅線提醒;無則空字串'),
 });
 
 export const ClientAmmoResponseSchema = z.object({
