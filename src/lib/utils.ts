@@ -166,6 +166,34 @@ export function dealsToCSV(deals: Deal[], settings: Settings, tiers: TierConfigI
   return [header, ...rows].map(row => row.map(esc).join(',')).join('\n');
 }
 
+// 把 deal.next_step 文字拆成「一項一筆」的任務標題陣列。
+// 同時支援:① 換行分隔(理想格式) ② 同一行用「1. A 2. B」「1、A 2、B」「(1) A (2) B」串在一起的退化格式。
+// 設計理由:AI 與 RM 常把多個動作擠在同一行,導致只能整包指派給同一人;拆開後每筆可分別指派。
+const ENUM_MARK =
+  '(?:\\d{1,2}\\.(?!\\d)|\\d{1,2}[、)）．:：]|[（(]\\d{1,2}[)）]|[①②③④⑤⑥⑦⑧⑨⑩]|[一二三四五六七八九十]{1,2}、)';
+
+export function splitNextStepIntoTasks(raw: string | null | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  let s = raw.replace(/\r\n?/g, '\n');
+  // (a) 行內:遇到「空白/標點 + 編號標記 + 內容」就在標記前斷行(只在有明確邊界時切,避免誤切金額/小數)
+  s = s.replace(new RegExp(`([\\s、,;；。．])(?=${ENUM_MARK}\\s*\\S)`, 'g'), '$1\n');
+  // (b) 圈號 ②–⑩ 幾乎不會出現在句中,即使沒有空白也視為新項目起點
+  s = s.replace(/(?!^)(?=[②③④⑤⑥⑦⑧⑨⑩])/g, '\n');
+  return s
+    .split('\n')
+    .map(l =>
+      l
+        .trim()
+        // 去掉開頭的編號/項目符號:1. 1、 1) (1) （1） A. a) ① 一、 - • *(數字+點後若接數字視為小數,不剝除)
+        .replace(
+          /^(?:\d{1,2}\.(?!\d)|\d{1,2}[、)）．:：]|[（(]\d{1,2}[)）]|[A-Za-z][.)、]|[①②③④⑤⑥⑦⑧⑨⑩]|[（(]?[一二三四五六七八九十]{1,2}[)）]?、|[-•*‧·–—])\s*/,
+          ''
+        )
+        .trim()
+    )
+    .filter(l => l.length > 0);
+}
+
 export function downloadCSV(filename: string, csv: string) {
   // Prepend BOM so Excel / Google Sheets auto-detect UTF-8
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });

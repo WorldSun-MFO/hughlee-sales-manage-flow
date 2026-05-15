@@ -41,7 +41,7 @@ ${body.userText.trim()}
 
 請分析這次互動內容,輸出 JSON。注意:
 - 沒有具體證據的分數不要改
-- 若使用者提到新的承諾/動作,update next_step_update
+- 若使用者提到新的承諾/動作,更新 next_step_update。**若有多個動作,每個動作必須各自獨立一行(用換行分隔),絕對不要寫成「1. xxx 2. yyy」擠在同一行**——系統會把每一行拆成一筆可分別指派給不同人的任務,擠在一行會導致無法分派
 - question_checkoffs 只勾「這次真的得到答案」的題目
 - 若 MEDDIC 總分達到推進條件,stage_suggestion 才給值,否則 null
 
