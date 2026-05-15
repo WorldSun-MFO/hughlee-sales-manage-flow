@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { resolveTagIds, syncIntelTags } from '@/lib/market/tags';
+import { resolveTagIds, syncIntelTags, syncIntelDealLinks } from '@/lib/market/tags';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +22,10 @@ const CreateSchema = z.object({
   author: z.string().optional().default(''),
   published_at: z.string().nullable().optional(),
   tags: z.array(TagSchema).optional().default([]),
+  deal_links: z
+    .array(z.object({ deal_id: z.string().min(1), relevance_reason: z.string().optional().default('') }))
+    .optional()
+    .default([]),
 });
 
 /** GET /api/market/intel — 列表(全團隊共享,RLS 已開放讀) */
@@ -82,6 +86,10 @@ export async function POST(request: Request) {
   if (body.tags.length > 0) {
     const tagIds = await resolveTagIds(supabase, body.tags);
     await syncIntelTags(supabase, intel.id, tagIds);
+  }
+
+  if (body.deal_links.length > 0) {
+    await syncIntelDealLinks(supabase, intel.id, user.id, body.deal_links);
   }
 
   return NextResponse.json({ data: intel }, { status: 201 });
