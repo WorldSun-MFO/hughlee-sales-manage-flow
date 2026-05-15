@@ -24,7 +24,8 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isPublic = path.startsWith('/login') || path.startsWith('/auth') || path.startsWith('/_next') || path === '/favicon.ico';
+  // API routes 自己處理認證(/api/cron/* 給 Vercel Cron 直接打,/api/ai/* 用 supabase server client 認證)
+  const isPublic = path.startsWith('/login') || path.startsWith('/auth') || path.startsWith('/api/') || path.startsWith('/_next') || path === '/favicon.ico';
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
