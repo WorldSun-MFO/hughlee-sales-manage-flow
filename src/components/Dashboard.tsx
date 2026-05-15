@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { STAGES, TIER_STYLES } from '@/lib/constants';
-import type { Deal, DealPlan, PainPoint, Profile, Role, Settings, StageId, Scores, Team, Tier } from '@/lib/types';
+import type { Deal, DealPlan, PainPoint, Profile, Role, Settings, StageId, Scores, Task, TaskPriority, Team, Tier } from '@/lib/types';
 import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
 import { SettingsModal } from './SettingsModal';
+import { TasksTab } from './TasksTab';
 
 interface Props {
   initialDeals: Deal[];
@@ -16,10 +17,11 @@ interface Props {
   allProfiles: Profile[];
   initialPainPoints: PainPoint[];
   initialTeams: Team[];
+  initialTasks: Task[];
   settings: Settings;
 }
 
-export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoints, initialTeams, settings: initialSettings }: Props) {
+export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoints, initialTeams, initialTasks, settings: initialSettings }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [deals, setDeals] = useState<Deal[]>(initialDeals);
@@ -27,6 +29,8 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const [profiles, setProfiles] = useState<Profile[]>(allProfiles);
   const [painPoints, setPainPoints] = useState<PainPoint[]>(initialPainPoints);
   const [teams, setTeams] = useState<Team[]>(initialTeams);
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'tasks'>('pipeline');
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -49,6 +53,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => refetchProfiles())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pain_points' }, () => refetchPainPoints())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, () => refetchTeams())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => refetchTasks())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,6 +84,11 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const refetchTeams = useCallback(async () => {
     const { data } = await supabase.from('teams').select('*').order('name');
     if (data) setTeams(data as Team[]);
+  }, [supabase]);
+
+  const refetchTasks = useCallback(async () => {
+    const { data } = await supabase.from('tasks').select('*').order('due_date', { ascending: true, nullsFirst: false });
+    if (data) setTasks(data as Task[]);
   }, [supabase]);
 
   // --- Derived ---
@@ -187,6 +197,41 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   // 存原始未經 AI 處理的文字(從 AI助手「分析」按下時觸發)
   async function saveRawText(dealId: string, rawText: string) {
     await addComment(dealId, rawText, false, true);
+  }
+
+  // ===== 任務 CRUD(Sprint B) =====
+  async function addTask(input: {
+    title: string; deal_id: string | null; assignee_id: string | null;
+    due_date: string | null; priority: TaskPriority;
+  }) {
+    const { data, error } = await supabase.from('tasks')
+      .insert({ ...input, status: 'todo', source_type: 'manual', created_by: profile.id })
+      .select().single();
+    if (error) throw error;
+    if (data) setTasks(ts => [...ts, data as Task]);
+  }
+
+  async function updateTask(id: string, patch: Partial<Task>) {
+    setTasks(ts => ts.map(t => t.id === id ? { ...t, ...patch } : t));
+    await supabase.from('tasks').update(patch).eq('id', id);
+  }
+
+  async function deleteTask(id: string) {
+    setTasks(ts => ts.filter(t => t.id !== id));
+    await supabase.from('tasks').delete().eq('id', id);
+  }
+
+  // 把 deal.next_step 一鍵升級成任務(從 DealDetail 觸發)
+  async function promoteNextStepToTask(dealId: string) {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal?.next_step?.trim()) { alert('此案件沒有下一步可升級'); return; }
+    await addTask({
+      title: deal.next_step.trim(),
+      deal_id: dealId,
+      assignee_id: deal.rm_id,
+      due_date: null,
+      priority: 'normal',
+    });
   }
 
   async function advanceStage(dealId: string) {
@@ -500,6 +545,42 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           )}
         </section>
 
+        {/* Tab 切換:銷售漏斗 / 任務管理 */}
+        <div className="flex gap-1 border-b border-slate-200">
+          <button
+            onClick={() => setActiveTab('pipeline')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+              activeTab === 'pipeline' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >📊 銷售漏斗</button>
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+              activeTab === 'tasks' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            📋 任務管理
+            {tasks.filter(t => t.status !== 'done').length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-indigo-100 text-indigo-700 rounded-full">
+                {tasks.filter(t => t.status !== 'done').length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === 'tasks' ? (
+          <TasksTab
+            tasks={tasks}
+            deals={deals}
+            profiles={profiles}
+            profile={profile}
+            onOpenDeal={(id) => setCurrentDealId(id)}
+            onAddTask={addTask}
+            onUpdateTask={updateTask}
+            onDeleteTask={deleteTask}
+          />
+        ) : (
+        <>
         <section className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-sm">漏斗階段分佈</h2>
@@ -612,6 +693,8 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
             </button>
           ))}
         </section>
+        </>
+        )}
       </main>
 
       {currentDeal && (
@@ -631,6 +714,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           onAdvance={() => advanceStage(currentDeal.id)}
           onDelete={() => deleteDeal(currentDeal.id)}
           onSaveRawText={(raw) => saveRawText(currentDeal.id, raw)}
+          onPromoteNextStep={() => promoteNextStepToTask(currentDeal.id)}
           onApplyAISuggestion={(patch) => applyAISuggestion(currentDeal.id, patch)}
           onSavePlan={(plan, td) => savePlan(currentDeal.id, plan, td)}
           onTogglePlanStep={(stepId) => togglePlanStep(currentDeal.id, stepId)}

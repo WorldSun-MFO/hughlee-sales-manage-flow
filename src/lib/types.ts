@@ -12,6 +12,27 @@ export interface TierConfigItem {
 // 三層權限:RM 只看自己;Team Lead 看自己團隊;Admin 看全部
 export type Role = 'rm' | 'team_lead' | 'admin';
 
+// 任務追蹤(Sprint B)
+export type TaskStatus = 'todo' | 'doing' | 'done';
+export type TaskPriority = 'low' | 'normal' | 'high';
+export type TaskSourceType = 'manual' | 'deal_next_step' | 'ai_plan_step';
+
+export interface Task {
+  id: string;
+  deal_id: string | null;
+  title: string;
+  description: string;
+  assignee_id: string | null;
+  due_date: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  source_type: TaskSourceType;
+  source_ref: string;
+  created_by: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
 export interface Team {
   id: string;
   name: string;

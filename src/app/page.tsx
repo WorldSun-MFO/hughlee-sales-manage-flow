@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Dashboard } from '@/components/Dashboard';
 import { DEFAULT_TIER_CONFIG } from '@/lib/constants';
-import type { Deal, PainPoint, Profile, Settings, Team } from '@/lib/types';
+import type { Deal, PainPoint, Profile, Settings, Task, Team } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +50,12 @@ export default async function Home() {
     .order('name')
     .returns<Team[]>();
 
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select('*')
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .returns<Task[]>();
+
   const { data: settings } = await supabase
     .from('settings')
     .select('*')
@@ -63,6 +69,7 @@ export default async function Home() {
       allProfiles={profiles ?? []}
       initialPainPoints={painPoints ?? []}
       initialTeams={teams ?? []}
+      initialTasks={tasks ?? []}
       settings={settings ?? { id: 1, stage_probs: { L1:7,L2:13,L3:20,L4:44,L5:68,L6:90,L7:100 }, red_flag: { ebScore: 4, totalScore: 40, staleDays: 30 }, tier_config: { tiers: DEFAULT_TIER_CONFIG } }}
     />
   );

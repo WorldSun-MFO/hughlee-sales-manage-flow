@@ -23,6 +23,7 @@ interface Props {
   onAdvance: () => void;
   onDelete: () => void;
   onSaveRawText: (rawText: string) => Promise<void>;
+  onPromoteNextStep: () => Promise<void>;
   onApplyAISuggestion: (patch: {
     scores?: Partial<Scores>;
     next_step?: string | null;
@@ -37,7 +38,7 @@ interface Props {
 export function DealDetail({
   deal, settings, allProfiles, profile, painPoints, onClose,
   onPatchDeal, onPatchScore, onUpsertNote, onToggleChecklist, onToggleQuestion, onAddComment, onAdvance, onDelete,
-  onSaveRawText, onApplyAISuggestion, onSavePlan, onTogglePlanStep,
+  onSaveRawText, onPromoteNextStep, onApplyAISuggestion, onSavePlan, onTogglePlanStep,
 }: Props) {
   const [newComment, setNewComment] = useState('');
   const [showAIChat, setShowAIChat] = useState(false);
@@ -455,7 +456,16 @@ export function DealDetail({
           {/* Next step + comments */}
           <div>
             <label className="block">
-              <span className="text-xs text-slate-500">🎯 下一步具體動作</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500">🎯 下一步具體動作</span>
+                {deal.next_step?.trim() && (
+                  <button
+                    onClick={onPromoteNextStep}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+                    title="把這個下一步升級成可追蹤的任務(在「任務管理」頁面看得到、可指派、可標記完成)"
+                  >📋 加到任務管理</button>
+                )}
+              </div>
               <input
                 type="text"
                 defaultValue={deal.next_step ?? ''}
