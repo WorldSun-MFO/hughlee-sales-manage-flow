@@ -56,7 +56,7 @@ export async function GET(req: Request) {
   const sources: SourceRow[] =
     srcRows && srcRows.length > 0 ? (srcRows as SourceRow[]) : FALLBACK_SOURCES;
 
-  // 2) 白名單(既有標籤名);空 → 不過濾(讓 5.1 可測)
+  // 2) 既有標籤名(相關性過濾用,與 MFO_KEYWORDS 併用,任一命中就收)
   const { data: tagRows } = await supabase.from('market_tags').select('name');
   const whitelist = (tagRows ?? [])
     .map((t: { name: string }) => t.name?.trim().toLowerCase())
