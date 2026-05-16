@@ -240,6 +240,7 @@ export interface MarketIntel {
   stance: IntelStance;
   author: string;
   published_at: string | null;
+  source_origin: 'manual' | 'auto';   // 人工建檔 vs 自動抓取(Phase 5)
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -247,6 +248,19 @@ export interface MarketIntel {
   tags?: MarketTag[];
   deal_links?: IntelDealLink[];
   creator?: { full_name: string | null } | null;
+}
+
+// 自動抓取來源(ingest_sources;Phase 5.2-d 來源管理)
+export interface IngestSource {
+  id: string;
+  name: string;
+  kind: 'rss';
+  url: string;
+  region: IntelRegion | null;
+  active: boolean;
+  last_run_at: string | null;
+  last_status: string;
+  created_at: string;
 }
 
 // Feature A — AI 解析互動的回應

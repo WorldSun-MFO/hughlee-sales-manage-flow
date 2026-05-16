@@ -14,6 +14,7 @@ export function IntelBrowser({ initialIntel }: { initialIntel: MarketIntel[] }) 
   const [region, setRegion] = useState<IntelRegion | ''>('');
   const [sourceType, setSourceType] = useState<IntelSourceType | ''>('');
   const [stance, setStance] = useState<IntelStance | ''>('');
+  const [origin, setOrigin] = useState<'manual' | 'auto' | ''>('');
   const [q, setQ] = useState('');
 
   const filtered = useMemo(() => {
@@ -22,6 +23,7 @@ export function IntelBrowser({ initialIntel }: { initialIntel: MarketIntel[] }) 
       if (region && it.region !== region) return false;
       if (sourceType && it.source_type !== sourceType) return false;
       if (stance && it.stance !== stance) return false;
+      if (origin && (it.source_origin ?? 'manual') !== origin) return false;
       if (kw) {
         const hay = [
           it.title, it.summary, it.source_name, it.author,
@@ -32,9 +34,9 @@ export function IntelBrowser({ initialIntel }: { initialIntel: MarketIntel[] }) 
       }
       return true;
     });
-  }, [initialIntel, region, sourceType, stance, q]);
+  }, [initialIntel, region, sourceType, stance, origin, q]);
 
-  const hasFilter = region || sourceType || stance || q.trim();
+  const hasFilter = region || sourceType || stance || origin || q.trim();
 
   return (
     <div className="space-y-4">
@@ -51,6 +53,12 @@ export function IntelBrowser({ initialIntel }: { initialIntel: MarketIntel[] }) 
           className="inline-flex items-center gap-1 h-9 px-3 border border-indigo-200 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-50"
         >
           📊 多空綜合
+        </Link>
+        <Link
+          href="/market/sources"
+          className="inline-flex items-center gap-1 h-9 px-3 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50"
+        >
+          ⚙ 來源
         </Link>
         <Link
           href="/market/new"
@@ -86,6 +94,11 @@ export function IntelBrowser({ initialIntel }: { initialIntel: MarketIntel[] }) 
             </Chip>
           ))}
         </FilterGroup>
+        <FilterGroup label="進件">
+          <Chip active={origin === ''} onClick={() => setOrigin('')}>全部</Chip>
+          <Chip active={origin === 'auto'} onClick={() => setOrigin(origin === 'auto' ? '' : 'auto')}>🤖 自動</Chip>
+          <Chip active={origin === 'manual'} onClick={() => setOrigin(origin === 'manual' ? '' : 'manual')}>✍️ 人工</Chip>
+        </FilterGroup>
       </div>
 
       {/* 列表 */}
@@ -113,6 +126,9 @@ export function IntelBrowser({ initialIntel }: { initialIntel: MarketIntel[] }) 
                       <span className={`text-[11px] px-2 py-0.5 rounded-full ${STANCE_STYLE[it.stance]}`}>
                         {STANCES.find(s => s.key === it.stance)?.label}
                       </span>
+                      {it.source_origin === 'auto' && (
+                        <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-600">🤖 自動</span>
+                      )}
                     </div>
                     <div className="font-semibold text-slate-900 truncate">{it.title}</div>
                     {it.summary && (
