@@ -188,6 +188,24 @@ export interface IntelDealLink {
   deal?: { id: string; name: string } | null;   // join 進來方便顯示
 }
 
+// 配對建議待審(Phase 5.2:自動進件 AI 配對 → RM 審核)
+export interface IntelLinkSuggestion {
+  id: string;
+  intel_id: string;
+  deal_id: string;
+  relevance_reason: string;
+  status: 'pending' | 'accepted' | 'dismissed';
+  created_at: string;
+  intel?: {
+    id: string;
+    title: string;
+    summary: string;
+    stance: IntelStance;
+    region: IntelRegion;
+    source_name: string;
+  } | null;
+}
+
 // 精簡客戶(餵 AI / 關聯選單用)
 export interface DealLite {
   id: string;

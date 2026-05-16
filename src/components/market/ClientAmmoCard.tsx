@@ -1,14 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { ClientAmmoResponse } from '@/lib/anthropic/schemas';
+import type { IntelLinkSuggestion } from '@/lib/types';
+import { STANCE_LABEL, STANCE_STYLE } from '@/lib/market/constants';
 
 export function ClientAmmoCard({ dealId, dealName }: { dealId: string; dealName: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<ClientAmmoResponse | null>(null);
+
+  const [suggestions, setSuggestions] = useState<IntelLinkSuggestion[]>([]);
+  const [suggLoaded, setSuggLoaded] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
+
+  // 卡片展開時載入待審配對建議(零 AI 成本)
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/market/suggestions?dealId=${encodeURIComponent(dealId)}`);
+        const json = await res.json();
+        if (!cancelled && res.ok) setSuggestions((json.data ?? []) as IntelLinkSuggestion[]);
+      } catch {
+        /* 靜默:建議載入失敗不擋彈藥庫主功能 */
+      } finally {
+        if (!cancelled) setSuggLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, dealId]);
+
+  async function decide(id: string, action: 'accept' | 'dismiss') {
+    setActing(id);
+    try {
+      const res = await fetch(`/api/market/suggestions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) setSuggestions(s => s.filter(x => x.id !== id));
+    } catch {
+      /* 失敗就保留,讓使用者再試 */
+    } finally {
+      setActing(null);
+    }
+  }
 
   async function generate() {
     setLoading(true);
@@ -41,12 +81,65 @@ export function ClientAmmoCard({ dealId, dealName }: { dealId: string; dealName:
       >
         <span className="text-sm font-semibold text-slate-800 flex items-center gap-2">
           🧠 市場彈藥庫 — 今天能跟 {dealName} 聊什麼
+          {suggLoaded && suggestions.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600">
+              {suggestions.length} 筆待審
+            </span>
+          )}
         </span>
         <span className="text-xs text-slate-400">{open ? '收合 ▲' : '展開 ▼'}</span>
       </button>
 
       {open && (
         <div className="mt-3 space-y-3">
+          {/* 待審配對建議(自動進件 AI 配的,RM 審核) */}
+          {suggestions.length > 0 && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-2.5 space-y-2">
+              <div className="text-xs font-semibold text-rose-700">
+                📥 待審配對建議({suggestions.length})— 自動抓取 AI 認為這些情報跟此客戶有關
+              </div>
+              {suggestions.map(s => (
+                <div key={s.id} className="bg-white rounded-lg border border-slate-200 p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <Link
+                      href={`/market/${s.intel_id}`}
+                      target="_blank"
+                      className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline flex-1 min-w-0"
+                    >
+                      {s.intel?.title ?? '(情報已不存在)'}
+                    </Link>
+                    {s.intel && (
+                      <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full ${STANCE_STYLE[s.intel.stance]}`}>
+                        {STANCE_LABEL[s.intel.stance]}
+                      </span>
+                    )}
+                  </div>
+                  {s.relevance_reason && (
+                    <div className="text-xs text-slate-500 mt-1">{s.relevance_reason}</div>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={acting === s.id}
+                      onClick={() => decide(s.id, 'accept')}
+                      className="px-2.5 h-7 text-xs rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {acting === s.id ? '處理中…' : '✓ 採納關聯'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={acting === s.id}
+                      onClick={() => decide(s.id, 'dismiss')}
+                      className="px-2.5 h-7 text-xs rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      忽略
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {!result && (
             <div className="flex items-center gap-3">
               <button
