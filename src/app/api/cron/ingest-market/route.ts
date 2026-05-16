@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const MAX_PER_RUN = 5;          // 每次最多 Opus 處理幾篇(300s 內安全)
+const MAX_PER_RUN = 3;          // 每次最多 Opus 處理幾篇(壓在 300s 內穩定;每 3h 跑一次,量靠累積)
 const MAX_DEALS_FED = 80;
 const MAX_ARTICLE_CHARS = 12000;
 
