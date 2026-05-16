@@ -186,6 +186,5 @@ npm run typecheck  # tsc --noEmit
   (NS:harley.ns.cloudflare.com / mimi.ns.cloudflare.com),完成前戰報僅達本人信箱。
 - **MEDDPICC 升級**:Paper Process 欄位尚未進 schema/UI(backlog)。
 - **L0(Source)/ L8(Expand)**:Playbook 已定義、實作未完成。
-- **docs/BUSINESS_CONTEXT.md**:尚未建立(本檔頂端已引用,需補寫)。
 - **多人協作準備**:repo 目前在 Hugh 個人帳號(`hughlee-star/`),
   Johnson 接手前需評估轉至組織帳號或加 collaborator,並建立 PR workflow。

@@ -1,5 +1,7 @@
-// 輕量 RSS 解析(免依賴,Phase 5.1)。
-// 鉅亨等標準 RSS 2.0 夠用;5.2 接多來源時再換 fast-xml-parser 強化。
+// RSS / Atom 解析(fast-xml-parser,Phase 5.2-b)。
+// 支援 RSS 2.0(鉅亨等)、Atom、Google News RSS。
+
+import { XMLParser } from 'fast-xml-parser';
 
 export interface RssItem {
   title: string;
@@ -8,11 +10,32 @@ export interface RssItem {
   pubDate: string | null;
 }
 
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  parseTagValue: false,   // 標題/連結保持字串,不要被轉成數字/日期
+  trimValues: true,
+});
+
+function asArray<T>(x: T | T[] | undefined | null): T[] {
+  if (x == null) return [];
+  return Array.isArray(x) ? x : [x];
+}
+
+/** 取節點文字:可能是字串、{ '#text': ... }、CDATA 解出的字串。 */
+function txt(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    if (typeof o['#text'] === 'string') return o['#text'];
+  }
+  return '';
+}
+
 function stripHtml(s: string): string {
   return s
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
@@ -25,40 +48,64 @@ function stripHtml(s: string): string {
     .trim();
 }
 
-function pick(block: string, tag: string): string {
-  const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
-  return m ? m[1].trim() : '';
+/** Atom link 可能是字串、{@_href}、或多個 link 物件 → 取 alternate/第一個 http 連結。 */
+function atomLink(link: unknown): string {
+  for (const l of asArray(link as unknown[])) {
+    if (typeof l === 'string' && /^https?:\/\//i.test(l)) return l;
+    if (l && typeof l === 'object') {
+      const o = l as Record<string, unknown>;
+      const href = typeof o['@_href'] === 'string' ? o['@_href'] : '';
+      const rel = typeof o['@_rel'] === 'string' ? o['@_rel'] : '';
+      if (href && (rel === '' || rel === 'alternate')) return href;
+      if (href) return href;
+    }
+  }
+  return '';
 }
 
-/** 解析 RSS 2.0 / Atom 文字 → 條目陣列。失敗回空陣列(不丟例外)。 */
+/** 解析 RSS/Atom 文字 → 條目陣列。失敗回空陣列(不丟例外)。 */
 export function parseRssItems(xml: string): RssItem[] {
   if (!xml) return [];
+  let doc: Record<string, unknown>;
+  try {
+    doc = parser.parse(xml) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+
   const items: RssItem[] = [];
 
-  // RSS 2.0 <item>
-  const itemBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
-  for (const block of itemBlocks) {
-    const title = stripHtml(pick(block, 'title'));
-    let link = stripHtml(pick(block, 'link'));
-    if (!link) {
-      const g = block.match(/<guid[^>]*>([\s\S]*?)<\/guid>/i);
-      if (g && /^https?:\/\//i.test(g[1].trim())) link = g[1].trim();
+  // RSS 2.0
+  const rss = doc.rss as Record<string, unknown> | undefined;
+  const channel = rss?.channel as Record<string, unknown> | undefined;
+  if (channel) {
+    for (const it of asArray(channel.item as unknown[])) {
+      const o = it as Record<string, unknown>;
+      const title = stripHtml(txt(o.title));
+      let link = txt(o.link).trim();
+      if (!link) {
+        const guid = o.guid;
+        const g = typeof guid === 'string' ? guid : txt(guid);
+        if (/^https?:\/\//i.test(g)) link = g.trim();
+      }
+      const desc = stripHtml(txt(o['content:encoded']) || txt(o.description));
+      const pubDate = txt(o.pubDate) || null;
+      if (title && link) items.push({ title, link, description: desc, pubDate });
     }
-    const desc = stripHtml(pick(block, 'content:encoded') || pick(block, 'description'));
-    const pubDate = stripHtml(pick(block, 'pubDate')) || null;
-    if (title && link) items.push({ title, link, description: desc, pubDate });
+    if (items.length > 0) return items;
   }
-  if (items.length > 0) return items;
 
-  // Atom <entry> 後備
-  const entryBlocks = xml.match(/<entry[\s\S]*?<\/entry>/gi) ?? [];
-  for (const block of entryBlocks) {
-    const title = stripHtml(pick(block, 'title'));
-    const lm = block.match(/<link[^>]*href=["']([^"']+)["'][^>]*\/?>/i);
-    const link = lm ? lm[1].trim() : '';
-    const desc = stripHtml(pick(block, 'summary') || pick(block, 'content'));
-    const pubDate = stripHtml(pick(block, 'updated') || pick(block, 'published')) || null;
-    if (title && link) items.push({ title, link, description: desc, pubDate });
+  // Atom
+  const feed = doc.feed as Record<string, unknown> | undefined;
+  if (feed) {
+    for (const en of asArray(feed.entry as unknown[])) {
+      const o = en as Record<string, unknown>;
+      const title = stripHtml(txt(o.title));
+      const link = atomLink(o.link);
+      const desc = stripHtml(txt(o.summary) || txt(o.content));
+      const pubDate = txt(o.updated) || txt(o.published) || null;
+      if (title && link) items.push({ title, link, description: desc, pubDate });
+    }
   }
   return items;
 }
