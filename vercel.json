@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/weekly-report",
       "schedule": "0 1 * * 0"
+    },
+    {
+      "path": "/api/cron/ingest-market",
+      "schedule": "0 */3 * * *"
     }
   ]
 }
