@@ -63,6 +63,22 @@ export function parseRssItems(xml: string): RssItem[] {
   return items;
 }
 
+/** 標題轉 2-gram 集合(中文無空白,用字元 bigram 判相似)。 */
+export function titleBigrams(s: string): Set<string> {
+  const t = (s || '').replace(/\s+/g, '');
+  const g = new Set<string>();
+  for (let i = 0; i < t.length - 1; i++) g.add(t.slice(i, i + 2));
+  return g;
+}
+
+/** 重疊係數:交集 / 較小集合大小。>~0.45 視為同一則故事。 */
+export function bigramOverlap(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  return inter / Math.min(a.size, b.size);
+}
+
 /** RSS pubDate → 'YYYY-MM-DD'(失敗回 null)。 */
 export function toDateOnly(pubDate: string | null): string | null {
   if (!pubDate) return null;

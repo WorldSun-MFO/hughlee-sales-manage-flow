@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { parseMarketIntel, type ParseDeal } from '@/lib/anthropic/market-parse-core';
 import { resolveTagIds, syncIntelTags } from '@/lib/market/tags';
-import { parseRssItems, toDateOnly } from '@/lib/market/rss';
+import { parseRssItems, toDateOnly, titleBigrams, bigramOverlap } from '@/lib/market/rss';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,15 @@ export const maxDuration = 300;
 const MAX_PER_RUN = 3;          // 每次最多 Opus 處理幾篇(壓在 300s 內穩定;每 3h 跑一次,量靠累積)
 const MAX_DEALS_FED = 80;
 const MAX_ARTICLE_CHARS = 12000;
+const SIMILAR_THRESHOLD = 0.45; // 標題重疊 > 此值視為同一則故事 → 跳過(主題多元化)
+
+// WORLDSUN 核心主題關鍵字:任一命中就收(不必先有對應標籤)
+const MFO_KEYWORDS = [
+  '稅務', '節稅', '遺產稅', '贈與稅', '最低稅負', 'crs', 'obu', '海外所得', '實質課稅',
+  '傳承', '接班', '家族傳承', '二代', '世代移轉', '家族辦公室',
+  '信託', '家族信託', '保險金信託', '遺囑信託',
+  '資產配置', '保單', '分紅保險', '保費融資', '結構型商品', '家族資產',
+].map(k => k.toLowerCase());
 
 const FALLBACK_SOURCES = [
   { id: '', name: '鉅亨網 頭條', url: 'https://news.cnyes.com/rss/v1/news/category/headline', region: 'TW' as const },
@@ -64,6 +73,7 @@ export async function GET(req: Request) {
   const report = { sources: sources.length, fetched: 0, accepted: 0, ingested: 0, skipped_dup: 0, errors: [] as string[] };
   const seen = new Set<string>();
   const queue: Array<{ src: SourceRow; title: string; link: string; text: string; pubDate: string | null }> = [];
+  const queuedKeys: Set<string>[] = [];   // 已入列標題的 bigram,用於主題多元化
 
   for (const src of sources) {
     try {
@@ -92,11 +102,18 @@ export async function GET(req: Request) {
           .limit(1);
         if (dup && dup.length > 0) { report.skipped_dup++; continue; }
 
-        // 白名單過濾(有標籤才過濾;沒標籤全收以利初期測試)
+        // 相關性過濾:命中「既有標籤」或「MFO 核心主題關鍵字」任一才收
         const hay = `${it.title} ${it.description}`.toLowerCase();
-        if (whitelist.length > 0 && !whitelist.some(w => hay.includes(w))) continue;
+        const relevant =
+          whitelist.some(w => hay.includes(w)) || MFO_KEYWORDS.some(k => hay.includes(k));
+        if (!relevant) continue;
+
+        // 主題多元化:標題與已入列的太像 → 視為同一則故事,跳過
+        const key = titleBigrams(it.title);
+        if (queuedKeys.some(k => bigramOverlap(key, k) > SIMILAR_THRESHOLD)) continue;
 
         report.accepted++;
+        queuedKeys.push(key);
         queue.push({
           src,
           title: it.title,
