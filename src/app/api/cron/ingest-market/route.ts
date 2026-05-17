@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { parseMarketIntel, type ParseDeal } from '@/lib/anthropic/market-parse-core';
 import { resolveTagIds, syncIntelTags } from '@/lib/market/tags';
-import { parseRssItems, toDateOnly, titleBigrams, bigramOverlap } from '@/lib/market/rss';
+import { parseRssItems, toDateOnly, titleBigrams, bigramOverlap, type RssItem } from '@/lib/market/rss';
+import { fetchProviderItems } from '@/lib/market/newsapi';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,8 +22,18 @@ const MFO_KEYWORDS = [
   '資產配置', '保單', '分紅保險', '保費融資', '結構型商品', '家族資產',
 ].map(k => k.toLowerCase());
 
+// 國際財經 / MFO 英文關鍵字(對應上面中文,給外文新聞用;與中文清單併用,任一命中就收)
+const MFO_KEYWORDS_EN = [
+  'estate tax', 'inheritance tax', 'gift tax', 'wealth tax', 'tax planning', 'capital gains tax',
+  'offshore', 'fatca', 'crs', 'succession', 'wealth transfer', 'family office', 'estate planning',
+  'family trust', 'trust fund', 'private bank', 'high net worth', 'hnwi', 'family wealth',
+  'wealth management', 'asset allocation', 'structured note', 'structured product',
+  'premium financing', 'lombard', 'dividend', 'bond yield', 'interest rate', 'federal reserve',
+  'inflation', 'recession', 'ipo',
+].map(k => k.toLowerCase());
+
 const FALLBACK_SOURCES = [
-  { id: '', name: '鉅亨網 頭條', url: 'https://news.cnyes.com/rss/v1/news/category/headline', region: 'TW' as const },
+  { id: '', name: '鉅亨網 頭條', url: 'https://news.cnyes.com/rss/v1/news/category/headline', region: 'TW' as const, kind: 'rss', provider: null, skip_keyword_gate: false },
 ];
 
 interface SourceRow {
@@ -30,6 +41,9 @@ interface SourceRow {
   name: string;
   url: string;
   region: string | null;
+  kind: string;
+  provider: string | null;
+  skip_keyword_gate: boolean;
 }
 
 export async function GET(req: Request) {
@@ -50,9 +64,9 @@ export async function GET(req: Request) {
   // 1) 來源(資料庫註冊表;空的話用後備)
   const { data: srcRows } = await supabase
     .from('ingest_sources')
-    .select('id, name, url, region')
+    .select('id, name, url, region, kind, provider, skip_keyword_gate')
     .eq('active', true)
-    .eq('kind', 'rss');
+    .in('kind', ['rss', 'api']);
   const sources: SourceRow[] =
     srcRows && srcRows.length > 0 ? (srcRows as SourceRow[]) : FALLBACK_SOURCES;
 
@@ -70,23 +84,31 @@ export async function GET(req: Request) {
     .limit(MAX_DEALS_FED);
   const dealList = (deals ?? []) as ParseDeal[];
 
-  const report = { sources: sources.length, fetched: 0, accepted: 0, ingested: 0, skipped_dup: 0, errors: [] as string[] };
+  const report = { sources: sources.length, fetched: 0, accepted: 0, ingested: 0, skipped_dup: 0, errors: [] as string[], notes: [] as string[] };
   const seen = new Set<string>();
   const queue: Array<{ src: SourceRow; title: string; link: string; text: string; pubDate: string | null }> = [];
   const queuedKeys: Set<string>[] = [];   // 已入列標題的 bigram,用於主題多元化
 
   for (const src of sources) {
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(src.url, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorldSunBot/1.0)' },
-      });
-      clearTimeout(timer);
-      if (!res.ok) { report.errors.push(`${src.name}: HTTP ${res.status}`); continue; }
-      const xml = await res.text();
-      const items = parseRssItems(xml);
+      let items: RssItem[];
+      if (src.kind === 'api') {
+        const r = await fetchProviderItems(src);
+        if (!r.ok) { report.errors.push(`${src.name}: ${r.error}`); continue; }
+        if (r.note) report.notes.push(`${src.name}: ${r.note}`);
+        items = r.items;
+      } else {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        const res = await fetch(src.url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorldSunBot/1.0)' },
+        });
+        clearTimeout(timer);
+        if (!res.ok) { report.errors.push(`${src.name}: HTTP ${res.status}`); continue; }
+        const xml = await res.text();
+        items = parseRssItems(xml);
+      }
       report.fetched += items.length;
 
       for (const it of items) {
@@ -102,10 +124,14 @@ export async function GET(req: Request) {
           .limit(1);
         if (dup && dup.length > 0) { report.skipped_dup++; continue; }
 
-        // 相關性過濾:命中「既有標籤」或「MFO 核心主題關鍵字」任一才收
+        // 相關性過濾:skip_keyword_gate 來源(查詢型/已篩過)直接收;
+        // 其餘命中「既有標籤」或 MFO 中/英關鍵字任一才收
         const hay = `${it.title} ${it.description}`.toLowerCase();
         const relevant =
-          whitelist.some(w => hay.includes(w)) || MFO_KEYWORDS.some(k => hay.includes(k));
+          src.skip_keyword_gate ||
+          whitelist.some(w => hay.includes(w)) ||
+          MFO_KEYWORDS.some(k => hay.includes(k)) ||
+          MFO_KEYWORDS_EN.some(k => hay.includes(k));
         if (!relevant) continue;
 
         // 主題多元化:標題與已入列的太像 → 視為同一則故事,跳過
@@ -145,7 +171,7 @@ export async function GET(req: Request) {
       .insert({
         title: d.title || job.title,
         source_type: 'media',
-        source_name: job.src.name,
+        source_name: d.source_name || job.src.name,
         source_url: job.link,
         region: d.region || job.src.region || 'TW',
         summary: d.summary,

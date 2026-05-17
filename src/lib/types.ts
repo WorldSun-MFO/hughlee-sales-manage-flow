@@ -254,13 +254,15 @@ export interface MarketIntel {
 export interface IngestSource {
   id: string;
   name: string;
-  kind: 'rss';
+  kind: 'rss' | 'api';
   url: string;
   region: IntelRegion | null;
   active: boolean;
   last_run_at: string | null;
   last_status: string;
   created_at: string;
+  provider?: string | null;        // API 來源:供應商代號(如 'newsdata');RSS 為 null
+  skip_keyword_gate?: boolean;     // true = 跳過中/英文關鍵字相關性閘門
 }
 
 // Feature A — AI 解析互動的回應
