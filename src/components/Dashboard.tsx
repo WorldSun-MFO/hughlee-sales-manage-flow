@@ -650,7 +650,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           />
         ) : (
         <>
-        <details open className="bg-white rounded-xl border border-slate-200 p-4">
+        <details className="bg-white rounded-xl border border-slate-200 p-4">
           <summary className="flex items-center justify-between mb-3 cursor-pointer select-none">
             <h2 className="font-semibold text-sm">漏斗階段分佈</h2>
             {filter.stage && (
