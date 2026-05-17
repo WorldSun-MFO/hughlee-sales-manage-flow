@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const MAX_PER_RUN = 3;          // 每次最多 Opus 處理幾篇(壓在 300s 內穩定;每 3h 跑一次,量靠累積)
+const MAX_PER_SOURCE = 1;       // 每源每輪最多收幾篇:配合來源「最久沒跑優先」排序,確保多源公平輪替,不被單一大源(如鉅亨頭條)吃光名額
 const MAX_DEALS_FED = 80;
 const MAX_ARTICLE_CHARS = 12000;
 const SIMILAR_THRESHOLD = 0.45; // 標題重疊 > 此值視為同一則故事 → 跳過(主題多元化)
@@ -66,7 +67,9 @@ export async function GET(req: Request) {
     .from('ingest_sources')
     .select('id, name, url, region, kind, provider, skip_keyword_gate')
     .eq('active', true)
-    .in('kind', ['rss', 'api']);
+    .in('kind', ['rss', 'api'])
+    // 公平排程:最久沒跑(或從沒跑,nullsFirst)的源排前面 → 配合 MAX_PER_SOURCE 讓國際/新源輪得到
+    .order('last_run_at', { ascending: true, nullsFirst: true });
   const sources: SourceRow[] =
     srcRows && srcRows.length > 0 ? (srcRows as SourceRow[]) : FALLBACK_SOURCES;
 
@@ -111,8 +114,10 @@ export async function GET(req: Request) {
       }
       report.fetched += items.length;
 
+      let takenFromSrc = 0;   // 本源本輪已收幾篇(per-source 上限用)
       for (const it of items) {
         if (queue.length >= MAX_PER_RUN) break;
+        if (takenFromSrc >= MAX_PER_SOURCE) break;   // 本源本輪已達上限 → 換下一個源
         if (seen.has(it.link)) continue;
         seen.add(it.link);
 
@@ -147,6 +152,7 @@ export async function GET(req: Request) {
           text: `${it.title}\n\n${it.description}`.slice(0, MAX_ARTICLE_CHARS),
           pubDate: it.pubDate,
         });
+        takenFromSrc++;
       }
 
       if (src.id) {
