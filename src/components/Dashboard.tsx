@@ -651,14 +651,16 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
         ) : (
         <>
         <details className="bg-white rounded-xl border border-slate-200 p-4">
-          <summary className="flex items-center justify-between mb-3 cursor-pointer select-none">
-            <h2 className="font-semibold text-sm">漏斗階段分佈</h2>
-            {filter.stage && (
-              <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFilter(f => ({ ...f, stage: '' })); }}
-                className="text-xs text-indigo-600 hover:underline"
-              >清除階段篩選</button>
-            )}
+          <summary className="mb-3 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-sm">漏斗階段分佈</h2>
+              {filter.stage && (
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFilter(f => ({ ...f, stage: '' })); }}
+                  className="text-xs text-indigo-600 hover:underline"
+                >清除階段篩選</button>
+              )}
+            </div>
           </summary>
           <div className="space-y-2">
             {STAGES.map(stage => (
