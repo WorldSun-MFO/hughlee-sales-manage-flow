@@ -188,3 +188,32 @@ npm run typecheck  # tsc --noEmit
 - **L0(Source)/ L8(Expand)**:Playbook 已定義、實作未完成。
 - **多人協作準備**:repo 目前在 Hugh 個人帳號(`hughlee-star/`),
   Johnson 接手前需評估轉至組織帳號或加 collaborator,並建立 PR workflow。
+
+  ## 資料安全（必讀）
+
+所有 RLS policy、helper functions、audit log 架構與一鍵還原 SQL 詳見 [`docs/SECURITY.md`](./docs/SECURITY.md)。
+
+### 修改 schema 時的必做事項
+
+1. **新增 table** 時：
+   - 必須啟用 RLS：`ALTER TABLE <name> ENABLE ROW LEVEL SECURITY;`
+   - 必須建立至少一條 policy（否則 authenticated user 也讀不到）
+   - 評估是否要加 audit trigger（參考 `docs/SECURITY.md` 第 4.4 節判斷邏輯）
+   - 同步更新 `docs/SECURITY.md` 附錄 A 的 migration SQL
+
+2. **修改既有 table schema**（新增/刪除欄位）：
+   - 不需要改 RLS policy（除非新欄位涉及權限判斷）
+   - audit_log trigger 會自動適應（使用 `to_jsonb(NEW)` 全表抓取）
+
+3. **修改 helper functions**（is_admin, can_access_deal 等）：
+   - 必須保留 `SECURITY DEFINER` + `SET search_path = public`
+   - 同步更新 `docs/SECURITY.md` 附錄 A
+
+4. **任何 schema 變動**：
+   - 完成後，建議跑 `docs/SECURITY.md` 附錄 B.2 的「紅旗檢查」確認沒踩雷
+
+### 紅線
+
+- **絕對不要** disable RLS（即使只是「測試一下」）
+- **絕對不要** 給 audit_log 新增 INSERT/UPDATE/DELETE policy
+- **絕對不要** 把 service_role key 暴露到前端
