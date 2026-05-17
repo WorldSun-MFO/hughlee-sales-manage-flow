@@ -193,6 +193,8 @@ npm run typecheck  # tsc --noEmit
 
 所有 RLS policy、helper functions、audit log 架構與一鍵還原 SQL 詳見 [`docs/SECURITY.md`](./docs/SECURITY.md)。
 
+**誤刪案件緊急還原**：admin 照 [`docs/RECOVERY.md`](./docs/RECOVERY.md) 的兩行 SOP 操作即可（深層架構才看 SECURITY.md）。
+
 ### 修改 schema 時的必做事項
 
 1. **新增 table** 時：

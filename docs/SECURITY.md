@@ -308,6 +308,22 @@ WHERE operation = 'DELETE'
   AND changed_at > NOW() - INTERVAL '7 days'
 ORDER BY changed_at DESC;
 從 audit_log 還原誤刪資料
+（緊急操作型快速手冊見 docs/RECOVERY.md；本節為架構參考。）
+
+【建議】一鍵還原（migration_17,免手拆 JSONB,admin only）
+-- Step 1: 看可還原清單(近 30 天被刪、目前不存在的案件)
+SELECT * FROM public.list_deleted_deals();
+
+-- Step 2: 一行還原指定案件 + 其級聯子資料(scores / score_notes /
+--         stage_checklist / deal_questions / comments / tasks),回傳還原摘要
+SELECT public.restore_deleted_deal('<從上面複製的 deal_id>');
+-- 還原本身會記入 audit_log(可追溯);函數內為原子交易,失敗自動 rollback。
+-- 範圍外(設計上接受):stage_history / deal_attachments / 市場情報連結 /
+-- family_wallet_map 不在 10 張 audited 表內,無法由此還原。
+-- 注意:在 migration_16 修好「之前」就被刪的案件,其 scores 等子資料當時
+-- 未被 audit 抓到 → 摘要會顯示該子表 0 筆(殼可還原,子資料當次永久遺失)。
+
+【Fallback】手動拆 JSONB(函數不可用、或需逐欄檢視時)
 -- Step 1: 找到誤刪的紀錄
 SELECT id, old_data
 FROM audit_log
@@ -510,6 +526,12 @@ Redeploy
 日期
 變更內容
 執行者
+2026-05-17
+新增一鍵還原工具：public.list_deleted_deals() + public.restore_deleted_deal()（admin only，免手拆 JSONB，還原動作本身入 audit_log）；§4.6 同步更新；見 migration_17
+Hugh（real-run 待執行）+ Claude Code（SQL/doc）
+2026-05-17
+修復 audit_trigger_func() record_id bug（舊版寫死 NEW.id/OLD.id → 改用通用推導）；補回今天為止血而 DROP 的 4 張表 trigger（scores / score_notes / stage_checklist / deal_questions）；見 migration_16
+Hugh（real-run）+ Claude Code（SQL/doc）
 2026-05-17
 建立 audit_log 表 + 10 張表的 audit trigger + admin-only read RLS
 Hugh
@@ -960,58 +982,87 @@ CREATE INDEX IF NOT EXISTS idx_audit_changed_by
 -- ============================================
 -- AUDIT LOG: Trigger Function
 -- ============================================
+-- ⚠️ 2026-05-17 修復(見 supabase/migration_16_fix_audit_trigger_recordid.sql):
+--    舊版 record_id 寫死 NEW.id / OLD.id。但 scores / score_notes /
+--    stage_checklist / deal_questions 沒有 id 欄(主鍵是 deal_id 或複合鍵),
+--    任何寫入都會讓此 AFTER trigger 報 `record "new" has no field "id"`
+--    → 交易回滾 → 寫入癱瘓。改用「通用 record_id」推導,不假設有 id 欄。
+--    對既有有 id 欄的表行為完全不變(COALESCE 先取 id)。
 CREATE OR REPLACE FUNCTION public.audit_trigger_func()
-RETURNS TRIGGER 
+RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_user_id UUID;
+  v_user_id   UUID;
   v_user_role TEXT;
   v_user_name TEXT;
+  v_rec       JSONB;   -- 受影響列(DELETE 取 OLD,其餘取 NEW)
+  v_record_id TEXT;    -- 通用主鍵字串,不假設欄名叫 id
 BEGIN
   v_user_id := auth.uid();
-  
+
   IF v_user_id IS NOT NULL THEN
     SELECT role, full_name INTO v_user_role, v_user_name
     FROM public.profiles
     WHERE id = v_user_id;
   END IF;
 
+  IF TG_OP = 'DELETE' THEN
+    v_rec := to_jsonb(OLD);
+  ELSE
+    v_rec := to_jsonb(NEW);
+  END IF;
+
+  -- 有 id 欄 → 取 id(與舊版 NEW.id::TEXT 等價);
+  -- 無 id 欄 → deal_id + 次要鍵以 ':' 串接(concat_ws 自動略過 NULL)。
+  -- ->>'x' 對不存在的 key 回傳 NULL,永不丟例外 —— 這是本修復的關鍵。
+  v_record_id := COALESCE(
+    v_rec->>'id',
+    NULLIF(concat_ws(':',
+      v_rec->>'deal_id',
+      v_rec->>'field',
+      v_rec->>'item_key',
+      v_rec->>'question_key'
+    ), '')
+  );
+
   IF TG_OP = 'INSERT' THEN
     INSERT INTO public.audit_log (
-      table_name, record_id, operation, 
+      table_name, record_id, operation,
       new_data, changed_by, changed_by_role, changed_by_name
     )
     VALUES (
-      TG_TABLE_NAME, NEW.id::TEXT, TG_OP, 
-      to_jsonb(NEW), v_user_id, v_user_role, v_user_name
+      TG_TABLE_NAME, v_record_id, TG_OP,
+      v_rec, v_user_id, v_user_role, v_user_name
     );
     RETURN NEW;
   ELSIF TG_OP = 'UPDATE' THEN
     IF to_jsonb(OLD) IS DISTINCT FROM to_jsonb(NEW) THEN
       INSERT INTO public.audit_log (
-        table_name, record_id, operation, 
+        table_name, record_id, operation,
         old_data, new_data, changed_by, changed_by_role, changed_by_name
       )
       VALUES (
-        TG_TABLE_NAME, NEW.id::TEXT, TG_OP, 
-        to_jsonb(OLD), to_jsonb(NEW), v_user_id, v_user_role, v_user_name
+        TG_TABLE_NAME, v_record_id, TG_OP,
+        to_jsonb(OLD), v_rec, v_user_id, v_user_role, v_user_name
       );
     END IF;
     RETURN NEW;
   ELSIF TG_OP = 'DELETE' THEN
     INSERT INTO public.audit_log (
-      table_name, record_id, operation, 
+      table_name, record_id, operation,
       old_data, changed_by, changed_by_role, changed_by_name
     )
     VALUES (
-      TG_TABLE_NAME, OLD.id::TEXT, TG_OP, 
-      to_jsonb(OLD), v_user_id, v_user_role, v_user_name
+      TG_TABLE_NAME, v_record_id, TG_OP,
+      v_rec, v_user_id, v_user_role, v_user_name
     );
     RETURN OLD;
   END IF;
+
+  RETURN NULL;
 END;
 $$;
 
