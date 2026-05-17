@@ -74,11 +74,22 @@ export function DealDetail({
     setNewComment('');
   }
 
+  // f5：ESC 關閉 Case detail；unmount / onClose 變動時移除 listener。
+  // AI 助手或規劃子 modal 開啟時不關（避免誤關正在編輯的內容）。
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !showAIChat && !showPlan) onClose();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose, showAIChat, showPlan]);
+
   return (
     <>
       <div className="fixed inset-0 bg-slate-900/50 z-40" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 top-4 sm:top-10 sm:inset-x-auto sm:right-4 sm:w-[720px] sm:max-w-[95vw] bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col">
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-white shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:h-[90vh] sm:w-[80vw] sm:max-w-[1200px] sm:rounded-2xl">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-3 shrink-0">
+          <button onClick={onClose} aria-label="返回" className="sm:hidden -ml-1 shrink-0 w-9 h-9 rounded-lg hover:bg-slate-100 text-slate-600 text-xl leading-none">←</button>
           <div className={`w-12 h-12 rounded-lg flex flex-col items-center justify-center font-bold text-xs stage-${deal.stage}`}>
             <div>{deal.stage}</div>
             <div className="text-[10px] font-normal opacity-80">{settings.stage_probs[deal.stage]}%</div>
@@ -103,7 +114,7 @@ export function DealDetail({
             title="AI 規劃成交路徑"
             className="h-9 px-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-indigo-600 text-white text-xs font-semibold hover:shadow"
           >🎯 規劃</button>
-          <button onClick={onClose} className="w-9 h-9 rounded-lg hover:bg-slate-100 text-slate-500">✕</button>
+          <button onClick={onClose} className="hidden sm:flex items-center justify-center w-9 h-9 rounded-lg hover:bg-slate-100 text-slate-500">✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-4">

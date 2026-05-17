@@ -35,6 +35,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [focusCollapsed, setFocusCollapsed] = useState(false);
+  const [funnelCollapsed, setFunnelCollapsed] = useState(true);
   const [filter, setFilter] = useState({ rm: '', stage: '' as StageId | '', tier: '' as Tier | '', redFlag: false, overdue: false, search: '', sort: 'updated' as 'updated' | 'aum' | 'score' | 'stage' });
   const tierCfg = settings.tier_config?.tiers ?? [];
 
@@ -650,16 +651,23 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           />
         ) : (
         <>
-        <details open className="bg-white rounded-xl border border-slate-200 p-4">
-          <summary className="flex items-center justify-between mb-3 cursor-pointer select-none">
+        <section className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-sm">漏斗階段分佈</h2>
-            {filter.stage && (
-              <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFilter(f => ({ ...f, stage: '' })); }}
-                className="text-xs text-indigo-600 hover:underline"
-              >清除階段篩選</button>
-            )}
-          </summary>
+            <div className="flex items-center gap-3">
+              {filter.stage && (
+                <button
+                  onClick={() => setFilter(f => ({ ...f, stage: '' }))}
+                  className="text-xs text-indigo-600 hover:underline"
+                >清除階段篩選</button>
+              )}
+              <button onClick={() => setFunnelCollapsed(v => !v)} className="text-xs text-slate-400 hover:text-slate-600">
+                {funnelCollapsed ? '展開 ▼' : '收起 ▲'}
+              </button>
+            </div>
+          </div>
+          {!funnelCollapsed && (
+            <>
           <div className="space-y-2">
             {STAGES.map(stage => (
               <button key={stage.id} onClick={() => setFilter(f => ({ ...f, stage: f.stage === stage.id ? '' : stage.id }))}
@@ -685,7 +693,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500">
             總案件 <span className="font-semibold text-slate-700">{deals.length}</span> · L4+ 佔比 {l4PlusPct}% (建議 ≥25%) · Pipeline 覆蓋率建議 ≥ 3× 月目標
           </div>
-        </details>
+            </>
+          )}
+        </section>
 
         <section className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap gap-2 items-center">
           <select value={filter.rm} onChange={e => setFilter(f => ({ ...f, rm: e.target.value }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">

@@ -13,6 +13,7 @@
     "@anthropic-ai/sdk": "^0.68.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
+    "@uiw/react-md-editor": "^4.1.0",
     "clsx": "^2.1.1",
     "fast-xml-parser": "^5.8.0",
     "lucide-react": "^0.469.0",
