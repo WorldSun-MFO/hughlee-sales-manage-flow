@@ -5,7 +5,7 @@ WORLDSUN MEDDIC Pipeline | Data Security Reference
 
 適用範圍：hughlee-star/hughlee-sales-manage-flow 對應的 Supabase project（Production / Preview / Development）
 
-最後更新：2026-05-17 文件維護者：Hugh Lee（Founder / Admin） 建議審閱頻率：每季一次，或重大架構變更時即時更新
+最後更新：2026-05-18 文件維護者：Hugh Lee（Founder / Admin） 建議審閱頻率：每季一次，或重大架構變更時即時更新
 
 
 目錄
@@ -162,7 +162,7 @@ deals 表本身：
   - 跟著 deal 的權限走，避免單獨設計
 
 非 deal 相關表：
-  - profiles: 全員可讀，自己可改
+  - profiles: 全員可讀；本人可改、manager 可改他人；新增（INSERT）僅 admin（2026-05-18 收緊，見 3.4）
   - settings: 全員可讀，僅 admin 可改
   - teams: 全員可讀，僅 admin 可改
   - market_intel: 全員可讀，本人或 admin 可改
@@ -171,6 +171,32 @@ deals 表本身：
   - mindmap_nodes: 僅 owner 可存取（私人筆記）
 
 完整 policy 定義見 附錄 A。
+
+3.4 登入閘門與外部帳號 / 帳號軟撤銷（2026-05-18, migration_19–22）
+身分層在 RLS 之前還有一道 auth.users 觸發器閘門：
+
+- restrict_email_domain()（BEFORE INSERT on auth.users）：email 非空，且
+  「@wsgfo.com 結尾」或「public.profiles 已存在同一 email」才放行，否則 raise 42501。
+  → 公司帳號自動放行；外部帳號（如 Gmail）僅在 admin 已於「新增成員」表單
+    預建該 email 的 profile 時才可登入。白名單即 profiles 表本身。
+- handle_new_user()（AFTER INSERT on auth.users）：首次登入把 admin 預建的
+  placeholder profile 併入真實帳號（轉移 14 條 FK 參照後刪 placeholder，
+  繼承 role / team_id），失敗整筆回滾（migration_19/20 修正其執行順序雷）。
+- profiles_insert 同步收緊為「僅 is_admin()」：信任邊界＝誰能建 profile，
+  唯有 admin 能新增成員 / 授予外部帳號登入（team_lead 不再能新增成員）。
+
+帳號軟撤銷（migration_22，admin only，SECURITY DEFINER RPC）：
+- admin_ban_user(email) / admin_unban_user(email)：ban 設
+  auth.users.banned_until 並清 auth.sessions（即時踢出）；可隨時 unban。
+- admin_member_status()：供前端讀每個 profile 的 auth/ban 狀態（前端讀不到
+  auth schema）。
+- 防呆：非 admin 拒絕、不能停用自己、不能停用到剩 0 位有效 admin。
+- 僅軟撤銷（保留資料、可復原），不做硬刪除。
+- 撤銷邊界（重要）：刪 profile 只擋「未來新登入」；已存在 auth.users 的帳號
+  仍可登入，要徹底封鎖須 ban。ban 對「從未登入、無 auth.users 的 placeholder」
+  無意義 —— 那種改用「移除 profile」。
+- 每次 ban/unban 寫入 audit_log（table_name='auth.users'，operation='UPDATE'，
+  new_data.action='BAN'/'UNBAN'；因 operation CHECK 僅允許 INSERT/UPDATE/DELETE）。
 
 
 4. Audit Log
@@ -526,6 +552,15 @@ Redeploy
 日期
 變更內容
 執行者
+2026-05-18
+新增 admin 軟撤銷:admin_ban_user/admin_unban_user/admin_member_status（admin-only SECURITY DEFINER；ban 設 banned_until+清 sessions；防呆:非 admin/停自己/停到剩 0 admin；audit_log operation=UPDATE+new_data.action）;SettingsModal 加「停用/復原登入」UI;§3.4 / 附錄 A.5;見 migration_22。經 MCP 套用 + 安全重演驗證(simon 零影響)
+Hugh（決策）+ Claude Code（SQL/UI/doc，MCP 套用）
+2026-05-18
+登入存取模型變更:restrict_email_domain 改為「@wsgfo.com 或 已有同 email profile」才放行（外部帳號白名單＝profiles 表，admin 表單預建即授權）;profiles_insert 由「admin OR team_lead」收緊為「僅 is_admin()」;§3.3 / 3.4 / 附錄 A.3 / A.5 同步;見 migration_21
+Hugh（決策）+ Claude Code（SQL/doc，MCP 套用）
+2026-05-18
+修復預建同事登入無限循環:handle_new_user 在建 profile 前就 UPDATE deals.rm_id 觸發 deals_rm_id_fkey 違反→交易回滾→500;改為釋放 email→先建 profile→轉移全部 14 條 FK→刪 placeholder,並繼承 team_id;見 migration_19/20
+Hugh（回報/驗收）+ Claude Code（SQL/doc，MCP 套用）
 2026-05-17
 新增一鍵還原工具：public.list_deleted_deals() + public.restore_deleted_deal()（admin only，免手拆 JSONB，還原動作本身入 audit_log）；§4.6 同步更新；見 migration_17
 Hugh（real-run 待執行）+ Claude Code（SQL/doc）
@@ -839,15 +874,11 @@ CREATE POLICY ingest_sources_write ON public.ingest_sources
 -- profiles
 CREATE POLICY profiles_read ON public.profiles
   FOR SELECT TO authenticated USING (true);
+-- 2026-05-18 收緊（migration_21）：原為 admin OR team_lead，
+-- 因「外部帳號白名單＝profiles 表」，信任邊界須等於「誰能建 profile」→ 僅 admin
 CREATE POLICY profiles_insert ON public.profiles
-  FOR INSERT TO authenticated 
-  WITH CHECK (
-    is_admin() 
-    OR (
-      is_team_lead() 
-      AND (team_id = user_team_id() OR team_id IS NULL)
-    )
-  );
+  FOR INSERT TO authenticated
+  WITH CHECK ( is_admin() );
 CREATE POLICY profiles_update_own ON public.profiles
   FOR UPDATE TO authenticated 
   USING (id = auth.uid() OR is_manager())
@@ -1119,6 +1150,39 @@ CREATE POLICY audit_log_admin_read ON public.audit_log
 
 -- 不設 INSERT/UPDATE/DELETE policy = 全擋
 -- trigger function 使用 SECURITY DEFINER 繞過 RLS 寫入
+
+A.5 Auth 閘門與 Admin 撤銷 RPC（migration_21 / 22）
+重建時須於 auth.users 已存在後套用（restrict_email_domain / handle_new_user
+觸發器本體見 supabase/schema.sql 與 migration_2/6/19/20；以下為 21/22 的最終態）。
+
+-- 登入閘門：@wsgfo.com 或 已有同 email profile 才放行（migration_21）
+CREATE OR REPLACE FUNCTION public.restrict_email_domain()
+  RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF new.email IS NULL THEN
+    RAISE EXCEPTION '此系統僅限 WORLDSUN 沃勝聯合家族辦公室 (@wsgfo.com) 員工,或經管理員預先建立帳號者使用。'
+      USING errcode = '42501';
+  END IF;
+  IF lower(new.email) ~ '@wsgfo\.com$' THEN RETURN new; END IF;
+  IF EXISTS (SELECT 1 FROM public.profiles p WHERE lower(p.email) = lower(new.email)) THEN
+    RETURN new;
+  END IF;
+  RAISE EXCEPTION '此系統僅限 WORLDSUN 沃勝聯合家族辦公室 (@wsgfo.com) 員工,或經管理員預先建立帳號者使用。您的 email % 未獲授權。', new.email
+    USING errcode = '42501';
+END;
+$$;
+
+-- Admin 軟撤銷（migration_22）：ban 設 banned_until 並清 sessions;可 unban。
+-- 防呆:非 admin / 停自己 / 停到剩 0 有效 admin 皆擋。auth.uid() IS NULL
+-- 視為 SQL Editor 特權執行放行(對齊 restore_deleted_deal 慣例)。
+-- 完整函式本體見 supabase/migration_22_admin_ban_user.sql（含 admin_set_user_ban
+-- 主體、admin_ban_user / admin_unban_user 包裝、admin_member_status，及
+--   GRANT EXECUTE ... TO authenticated）。重點:
+--   • ban: UPDATE auth.users SET banned_until='2099-12-31'; DELETE auth.sessions
+--   • 稽核: INSERT audit_log(operation='UPDATE', new_data.action='BAN'/'UNBAN')
+--           —— operation 受 CHECK 限 INSERT/UPDATE/DELETE，故語意放 new_data
+--   • Rollback: DROP FUNCTION admin_member_status / admin_unban_user /
+--               admin_ban_user / admin_set_user_ban
 
 
 附錄 B：診斷與驗證 SQL
