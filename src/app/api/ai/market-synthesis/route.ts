@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { IS_DEMO } from '@/lib/demo';
 import { getAnthropic, AI_MODEL } from '@/lib/anthropic/client';
 import { MARKET_SYNTHESIS_PROMPT } from '@/lib/anthropic/synthesis-prompt';
 import { MarketSynthesisResponseSchema, MARKET_SYNTHESIS_JSON_SCHEMA } from '@/lib/anthropic/schemas';
@@ -34,6 +35,7 @@ const STANCE_TXT: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
+  if (IS_DEMO) return NextResponse.json({ error: 'demo 為唯讀環境' }, { status: 403 });
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 });

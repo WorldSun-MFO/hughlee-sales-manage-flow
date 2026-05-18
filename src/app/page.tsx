@@ -3,10 +3,29 @@ import { createClient } from '@/lib/supabase/server';
 import { Dashboard } from '@/components/Dashboard';
 import { DEFAULT_TIER_CONFIG } from '@/lib/constants';
 import type { Deal, PainPoint, Profile, Settings, Task, Team } from '@/lib/types';
+import { IS_DEMO } from '@/lib/demo';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
+  // DEMO 模式:完全不碰 Supabase,直接用內建假資料渲染。
+  // 正式環境沒有 NEXT_PUBLIC_DEMO_MODE → IS_DEMO=false → 跳過,走下方原邏輯。
+  if (IS_DEMO) {
+    const { demoDeals, demoProfile, demoProfiles, demoPainPoints, demoTeams, demoTasks, demoSettings } =
+      await import('@/lib/demo/fixtures');
+    return (
+      <Dashboard
+        initialDeals={demoDeals}
+        profile={demoProfile}
+        allProfiles={demoProfiles}
+        initialPainPoints={demoPainPoints}
+        initialTeams={demoTeams}
+        initialTasks={demoTasks}
+        settings={demoSettings}
+      />
+    );
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');

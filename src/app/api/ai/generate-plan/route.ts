@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { IS_DEMO } from '@/lib/demo';
 import { getAnthropic } from '@/lib/anthropic/client';
 
 // 規劃用 Opus 4.7 + adaptive thinking,Vercel Pro 已升級,300 秒上限
@@ -17,6 +18,7 @@ interface ReqBody {
 }
 
 export async function POST(request: Request) {
+  if (IS_DEMO) return NextResponse.json({ error: 'demo 為唯讀環境' }, { status: 403 });
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 });

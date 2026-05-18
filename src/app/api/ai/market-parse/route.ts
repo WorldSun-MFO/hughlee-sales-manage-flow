@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { IS_DEMO } from '@/lib/demo';
 import { parseMarketIntel, type ParseDeal } from '@/lib/anthropic/market-parse-core';
 
 export const runtime = 'nodejs';
@@ -14,6 +15,7 @@ const MAX_ARTICLE_CHARS = 40000;   // 控制成本/延遲
 const MAX_DEALS_FED = 80;          // 餵給 AI 的客戶清單上限(admin 可能看到很多)
 
 export async function POST(request: Request) {
+  if (IS_DEMO) return NextResponse.json({ error: 'demo 為唯讀環境' }, { status: 403 });
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 });

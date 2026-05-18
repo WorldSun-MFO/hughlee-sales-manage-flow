@@ -7,6 +7,7 @@ import { fmtMoney, totalScore, recommendStage, redFlag, scoreColor, nextStage, c
 import { AIChatModal } from './AIChatModal';
 import { PlanModal } from './PlanModal';
 import { ClientAmmoCard } from './market/ClientAmmoCard';
+import { IS_DEMO } from '@/lib/demo';
 
 interface Props {
   deal: Deal;
@@ -104,16 +105,20 @@ export function DealDetail({
               {total}/80 · 建議 {recommendStage(total)} {flag && <>· 🚩 {flag}</>}
             </div>
           </div>
-          <button
-            onClick={() => setShowAIChat(true)}
-            title="AI 助手 — 把對話內容轉成結構化更新"
-            className="h-9 px-2.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-semibold hover:shadow"
-          >🤖 AI 助手</button>
-          <button
-            onClick={() => setShowPlan(true)}
-            title="AI 規劃成交路徑"
-            className="h-9 px-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-indigo-600 text-white text-xs font-semibold hover:shadow"
-          >🎯 規劃</button>
+          {!IS_DEMO && (
+            <>
+              <button
+                onClick={() => setShowAIChat(true)}
+                title="AI 助手 — 把對話內容轉成結構化更新"
+                className="h-9 px-2.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-semibold hover:shadow"
+              >🤖 AI 助手</button>
+              <button
+                onClick={() => setShowPlan(true)}
+                title="AI 規劃成交路徑"
+                className="h-9 px-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-indigo-600 text-white text-xs font-semibold hover:shadow"
+              >🎯 規劃</button>
+            </>
+          )}
           <button onClick={onClose} className="hidden sm:flex items-center justify-center w-9 h-9 rounded-lg hover:bg-slate-100 text-slate-500">✕</button>
         </div>
 
@@ -582,17 +587,19 @@ export function DealDetail({
 
             <div className="mt-3">
               <h3 className="font-semibold text-sm mb-2">註解時間軸</h3>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') submitComment(); }}
-                  placeholder="加一筆註解 (Enter 送出)"
-                  className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm"
-                />
-                <button onClick={submitComment} className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded">加入</button>
-              </div>
+              {!IS_DEMO && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') submitComment(); }}
+                    placeholder="加一筆註解 (Enter 送出)"
+                    className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm"
+                  />
+                  <button onClick={submitComment} className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded">加入</button>
+                </div>
+              )}
               <ul className="mt-2 space-y-1.5 max-h-60 overflow-y-auto scrollbar-thin">
                 {(deal.comments ?? []).slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(c => (
                   <li key={c.id} className={`text-sm rounded px-2 py-1.5 border ${
@@ -621,9 +628,11 @@ export function DealDetail({
             onGetUrl={onGetAttachmentUrl}
           />
 
-          <div className="pt-3 border-t border-slate-200">
-            <button onClick={() => { if (confirm(`刪除「${deal.name}」?此動作無法復原`)) onDelete(); }} className="text-xs text-rose-600 hover:underline">刪除此案件</button>
-          </div>
+          {!IS_DEMO && (
+            <div className="pt-3 border-t border-slate-200">
+              <button onClick={() => { if (confirm(`刪除「${deal.name}」?此動作無法復原`)) onDelete(); }} className="text-xs text-rose-600 hover:underline">刪除此案件</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -700,16 +709,18 @@ function AttachmentsSection({ attachments, onUpload, onDelete, onGetUrl }: {
     <div className="mt-3">
       <h3 className="font-semibold text-sm mb-2 flex items-center justify-between">
         <span>📂 客戶檔案 <span className="text-xs text-slate-400 font-normal">({attachments.length} 件)</span></span>
-        <label className="text-xs text-indigo-600 hover:text-indigo-800 cursor-pointer">
-          📎 上傳檔案
-          <input
-            type="file"
-            multiple
-            onChange={e => handleFiles(e.target.files)}
-            disabled={uploading}
-            className="hidden"
-          />
-        </label>
+        {!IS_DEMO && (
+          <label className="text-xs text-indigo-600 hover:text-indigo-800 cursor-pointer">
+            📎 上傳檔案
+            <input
+              type="file"
+              multiple
+              onChange={e => handleFiles(e.target.files)}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        )}
       </h3>
       {error && <div className="mb-2 text-xs text-rose-600 bg-rose-50 p-2 rounded">{error}</div>}
       {uploading && <div className="mb-2 text-xs text-slate-500">⏳ 上傳中...</div>}
