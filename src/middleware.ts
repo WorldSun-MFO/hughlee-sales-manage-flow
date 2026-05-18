@@ -5,10 +5,20 @@ import { IS_DEMO, DEMO_COOKIE, demoAccessToken } from '@/lib/demo';
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+
+  if (path === '/v2' || path.startsWith('/v2/')) {
+    return NextResponse.next();
+  }
+
+  // /v2b：第二個設計方向原型，與 /v2 同樣完全獨立、不碰 Supabase / 認證。
+  if (path === '/v2b' || path.startsWith('/v2b/')) {
+    return NextResponse.next();
+  }
+
   // ===== DEMO 模式:不碰 Supabase 認證,改用共用密碼閘門 =====
   // 正式環境沒有 NEXT_PUBLIC_DEMO_MODE → 跳過整段,走下方原認證邏輯。
   if (IS_DEMO) {
-    const path = request.nextUrl.pathname;
     // 次要模組(market / mindmap)會打 Supabase,demo 一律導回首頁
     if (path.startsWith('/market') || path.startsWith('/mindmap')) {
       return NextResponse.redirect(new URL('/', request.url));
@@ -46,14 +56,12 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
   // API routes 自己處理認證(/api/cron/* 給 Vercel Cron 直接打,/api/ai/* 用 supabase server client 認證)
   const isPublic =
     path.startsWith('/login') ||
     path.startsWith('/auth') ||
     path.startsWith('/api/') ||
     path.startsWith('/_next') ||
-    (path === '/v2' || path.startsWith('/v2/')) ||
     path === '/favicon.ico';
 
   if (!user && !isPublic) {
