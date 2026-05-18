@@ -30,6 +30,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const [painPoints, setPainPoints] = useState<PainPoint[]>(initialPainPoints);
   const [teams, setTeams] = useState<Team[]>(initialTeams);
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [memberStatus, setMemberStatus] = useState<Record<string, { has_auth: boolean; banned: boolean }>>({});
   const [activeTab, setActiveTab] = useState<'pipeline' | 'tasks'>('pipeline');
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
@@ -92,6 +93,16 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     const { data } = await supabase.from('tasks').select('*').order('due_date', { ascending: true, nullsFirst: false });
     if (data) setTasks(data as Task[]);
   }, [supabase]);
+
+  // 成員 auth/ban 狀態(前端讀不到 auth schema,走 admin-only RPC;非 admin 回空)
+  const refetchMemberStatus = useCallback(async () => {
+    if (profile.role !== 'admin') return;
+    const { data } = await supabase.rpc('admin_member_status');
+    const rows = (data ?? []) as Array<{ id: string; has_auth: boolean; banned: boolean }>;
+    setMemberStatus(Object.fromEntries(rows.map(r => [r.id, { has_auth: r.has_auth, banned: r.banned }])));
+  }, [supabase, profile.role]);
+
+  useEffect(() => { refetchMemberStatus(); }, [refetchMemberStatus]);
 
   // --- Derived ---
   const totalAum = useMemo(() => deals.filter(d => d.stage !== 'L7').reduce((s, d) => s + Number(d.aum_usd ?? 0), 0), [deals]);
@@ -357,6 +368,19 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   async function removeMember(id: string) {
     setProfiles(ps => ps.filter(p => p.id !== id));
     await supabase.from('profiles').delete().eq('id', id);
+  }
+
+  // 軟撤銷:停用 / 復原登入(admin-only RPC,後端再次把關)
+  async function banMember(email: string) {
+    const { error } = await supabase.rpc('admin_ban_user', { p_email: email });
+    if (error) throw error;
+    await refetchMemberStatus();
+  }
+
+  async function unbanMember(email: string) {
+    const { error } = await supabase.rpc('admin_unban_user', { p_email: email });
+    if (error) throw error;
+    await refetchMemberStatus();
   }
 
   // 團隊 CRUD(僅 admin 用)
@@ -831,6 +855,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           onAddMember={addMember}
           onUpdateMember={updateMember}
           onRemoveMember={removeMember}
+          memberStatus={memberStatus}
+          onBanMember={banMember}
+          onUnbanMember={unbanMember}
           onAddTeam={addTeam}
           onUpdateTeam={updateTeam}
           onRemoveTeam={removeTeam}

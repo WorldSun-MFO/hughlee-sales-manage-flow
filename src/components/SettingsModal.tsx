@@ -15,6 +15,9 @@ interface Props {
   onAddMember: (input: { email: string; full_name: string; role: Role; team_id: string | null }) => Promise<void>;
   onUpdateMember: (id: string, patch: { full_name?: string; role?: Role; team_id?: string | null }) => Promise<void>;
   onRemoveMember: (id: string) => Promise<void>;
+  memberStatus: Record<string, { has_auth: boolean; banned: boolean }>;
+  onBanMember: (email: string) => Promise<void>;
+  onUnbanMember: (email: string) => Promise<void>;
   onAddTeam: (name: string) => Promise<void>;
   onUpdateTeam: (id: string, name: string) => Promise<void>;
   onRemoveTeam: (id: string) => Promise<void>;
@@ -29,7 +32,7 @@ const ROLE_LABEL: Record<Role, string> = {
   admin: 'Admin',
 };
 
-export function SettingsModal({ settings, profile, allProfiles, painPoints, teams, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember, onAddTeam, onUpdateTeam, onRemoveTeam, onAddPain, onUpdatePain, onRemovePain }: Props) {
+export function SettingsModal({ settings, profile, allProfiles, painPoints, teams, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember, memberStatus, onBanMember, onUnbanMember, onAddTeam, onUpdateTeam, onRemoveTeam, onAddPain, onUpdatePain, onRemovePain }: Props) {
   const isAdmin = profile.role === 'admin';
   const isTeamLead = profile.role === 'team_lead';
   const canEditMembers = isAdmin || isTeamLead;
@@ -47,6 +50,27 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
   const [newPitch, setNewPitch] = useState('');
   const [newTiers, setNewTiers] = useState('');
   const [addingPain, setAddingPain] = useState(false);
+  const [memberBusyId, setMemberBusyId] = useState<string | null>(null);
+
+  async function handleBan(p: Profile) {
+    const typed = window.prompt(
+      `確定停用「${p.full_name || p.email}」的登入?\n對方會立即被踢出且無法再登入(資料保留、可日後復原)。\n\n請輸入對方 email 確認:`
+    );
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== p.email.toLowerCase()) { alert('輸入的 email 不符,已取消'); return; }
+    setMemberBusyId(p.id);
+    try { await onBanMember(p.email); }
+    catch (err) { alert('停用失敗:' + (err as Error).message); }
+    finally { setMemberBusyId(null); }
+  }
+
+  async function handleUnban(p: Profile) {
+    if (!confirm(`復原「${p.full_name || p.email}」的登入?對方將可重新登入。`)) return;
+    setMemberBusyId(p.id);
+    try { await onUnbanMember(p.email); }
+    catch (err) { alert('復原失敗:' + (err as Error).message); }
+    finally { setMemberBusyId(null); }
+  }
 
   async function submitNewMember() {
     if (!newEmail.trim() || !newName.trim()) { alert('請填 Email 與姓名'); return; }
@@ -181,6 +205,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
                 <tbody>
                   {allProfiles.map(p => {
                     const canEditThis = isAdmin && p.id !== profile.id;
+                    const st = memberStatus[p.id];
                     return (
                       <tr key={p.id} className="border-t border-slate-100">
                         <td className="px-2 py-1.5">
@@ -192,6 +217,7 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
                             />
                           ) : <span>{p.full_name || '—'}</span>}
                           {p.id === profile.id && <span className="ml-1 text-[10px] text-indigo-600">(我)</span>}
+                          {st?.banned && <span className="ml-1 text-[10px] text-amber-600 font-semibold">(已停用)</span>}
                         </td>
                         <td className="px-2 py-1.5 text-slate-600">{p.email}</td>
                         <td className="px-2 py-1.5">
@@ -227,12 +253,27 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
                             <span className="text-slate-600">{teams.find(t => t.id === p.team_id)?.name ?? '—'}</span>
                           )}
                         </td>
-                        <td className="px-2 py-1.5 text-right">
+                        <td className="px-2 py-1.5 text-right whitespace-nowrap">
                           {canEditThis && (
-                            <button
-                              onClick={() => { if (confirm(`移除「${p.full_name || p.email}」?若對方已登入過,其案件會無法再指派`)) onRemoveMember(p.id); }}
-                              className="text-rose-500 hover:underline"
-                            >移除</button>
+                            <span className="inline-flex items-center gap-2">
+                              {st?.banned ? (
+                                <button
+                                  onClick={() => handleUnban(p)}
+                                  disabled={memberBusyId === p.id}
+                                  className="text-emerald-600 hover:underline disabled:opacity-50"
+                                >{memberBusyId === p.id ? '...' : '復原登入'}</button>
+                              ) : st?.has_auth ? (
+                                <button
+                                  onClick={() => handleBan(p)}
+                                  disabled={memberBusyId === p.id}
+                                  className="text-amber-600 hover:underline disabled:opacity-50"
+                                >{memberBusyId === p.id ? '...' : '停用登入'}</button>
+                              ) : null}
+                              <button
+                                onClick={() => { if (confirm(`移除「${p.full_name || p.email}」?若對方已登入過,其案件會無法再指派`)) onRemoveMember(p.id); }}
+                                className="text-rose-500 hover:underline"
+                              >移除</button>
+                            </span>
                           )}
                         </td>
                       </tr>
