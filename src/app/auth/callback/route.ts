@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { EmailOtpType } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 
 // 出錯時不再 silent 彈回 /login(那會造成不透明的無限循環)。
@@ -44,6 +45,32 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') ?? '/';
   const oauthErr = searchParams.get('error');
   const oauthErrDesc = searchParams.get('error_description');
+
+  // 0) 一次性 Email 登入連結(管理員在「團隊成員」產生的 magic/invite 連結)。
+  //    走 verifyOtp(token_hash),不依賴 PKCE code verifier,跨瀏覽器/內建
+  //    瀏覽器皆穩。權限仍由 DB 端 restrict_email_domain(白名單)把關:
+  //    只有「新增成員」預建過 profile 的 email 才有有效連結可被產生。
+  const tokenHash = searchParams.get('token_hash');
+  const otpType = searchParams.get('type');
+  if (tokenHash && otpType) {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.verifyOtp({
+      type: otpType as EmailOtpType,
+      token_hash: tokenHash,
+    });
+    if (!error) return NextResponse.redirect(`${origin}${next}`);
+    return page({
+      origin,
+      advice:
+        '這條登入連結無法使用,通常是「已過期」或「已被用過一次」:\n' +
+        '• 請向管理員(Hugh)索取一條新的登入連結。\n' +
+        '• 連結請用電腦版 Chrome 或手機 Safari / Chrome 的「一般視窗」開啟,勿用 LINE/FB/IG 內建瀏覽器。\n' +
+        '• 同一條連結只能用一次,且有時效。',
+      tech:
+        `verifyOtp failed\ntype=${otpType}\nmessage=${error.message}\n` +
+        `status=${(error as unknown as { status?: number }).status ?? '-'}`,
+    });
+  }
 
   // Google 直接帶錯誤回來(取消授權 / 組織封鎖 / App 未授權…)
   if (oauthErr) {
