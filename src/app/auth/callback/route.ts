@@ -80,24 +80,10 @@ export async function GET(request: Request) {
   const lower = msg.toLowerCase();
   const tech = `exchangeCodeForSession failed\nmessage=${msg}\nstatus=${status ?? '-'}\ncode=${codeStr ?? '-'}`;
 
-  // 1) 公司網域限制(restrict_email_domain trigger,errcode 42501)
-  if (
-    msg.includes('wsgfo') ||
-    msg.includes('未獲授權') ||
-    msg.includes('沃勝') ||
-    status === 403
-  ) {
-    return page({
-      origin,
-      advice:
-        '你登入的 Google 帳號不是公司 @wsgfo.com 帳號,系統只開放公司帳號。\n' +
-        '• 在 Google 帳號選擇頁,請改選你的公司帳號(或點「使用其他帳戶」輸入 @wsgfo.com)。\n' +
-        '• 若瀏覽器預設登入的是個人 Gmail,請先登出個人帳號,或改用無痕視窗。',
-      tech,
-    });
-  }
-
-  // 2) PKCE / code verifier(內建瀏覽器、跨網域、Cookie 被擋)
+  // 1) PKCE / code verifier(內建瀏覽器、跨網域、Cookie 被擋)
+  //    必須排在網域判斷之前:LINE/FB/IG 內建瀏覽器丟失 code verifier 時
+  //    Supabase 常回 403,若先用裸 status===403 判網域,會把這種「瀏覽器
+  //    環境」失敗誤報成「你的帳號沒被授權」,讓使用者誤以為是權限問題。
   if (
     lower.includes('code verifier') ||
     lower.includes('code_verifier') ||
@@ -113,6 +99,24 @@ export async function GET(request: Request) {
         '• 請用電腦版 Chrome,或手機 Safari / Chrome 的「一般視窗」,勿用 LINE/FB/IG 內建瀏覽器。\n' +
         '• 用無痕視窗,直接輸入系統網址後再登入。\n' +
         '• 確認瀏覽器沒有封鎖本網站的 Cookie。',
+      tech,
+    });
+  }
+
+  // 2) 公司網域 / 白名單限制(restrict_email_domain trigger,errcode 42501)
+  //    只認該 trigger 的訊息字樣;不再用裸 status===403(那會把上面的
+  //    PKCE / 內建瀏覽器失敗誤報成網域問題)。
+  if (
+    msg.includes('wsgfo') ||
+    msg.includes('未獲授權') ||
+    msg.includes('沃勝')
+  ) {
+    return page({
+      origin,
+      advice:
+        '這個 Google 帳號目前沒有被授權登入本系統。\n' +
+        '• 公司同仁:請改用 @wsgfo.com 公司帳號登入(在 Google 帳號頁選公司帳號,或用無痕視窗避免被個人 Gmail 佔用)。\n' +
+        '• 外部協作者:請聯繫管理員,用「新增成員」把你的 email 預先建立;email 必須與你登入的 Google 帳號完全一致、全小寫。',
       tech,
     });
   }
