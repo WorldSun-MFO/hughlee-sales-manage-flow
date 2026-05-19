@@ -39,6 +39,41 @@ pre{background:#0f172a;color:#e2e8f0;font-size:11px;padding:12px;border-radius:8
   });
 }
 
+// 一次性連結的「點此完成登入」中間頁。只渲染一個 POST 表單按鈕;
+// 通訊軟體/Email 的網址預覽機器人只做 GET、不會送出表單,故一次性
+// token 不會在真人點之前被消耗。真人按下按鈕 → POST → 才 verifyOtp。
+function confirmPage(opts: {
+  origin: string;
+  tokenHash: string;
+  otpType: string;
+  next: string;
+}): Response {
+  const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>完成登入 — WORLDSUN</title>
+<style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif;background:#f1f5f9;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+.card{background:#fff;max-width:460px;width:100%;border:1px solid #e2e8f0;border-radius:16px;padding:28px;box-shadow:0 10px 30px rgba(0,0,0,.06);text-align:center}
+h1{font-size:18px;margin:0 0 6px}.sub{color:#64748b;font-size:13px;margin:0 0 22px}
+.btn{display:inline-block;border:0;cursor:pointer;background:#4f46e5;color:#fff;padding:14px 30px;border-radius:10px;font-size:16px;font-weight:700}
+.note{color:#94a3b8;font-size:12px;margin-top:18px;line-height:1.8}</style>
+</head><body><div class="card">
+<h1>完成登入</h1>
+<p class="sub">WORLDSUN MEDDIC Pipeline · 沃勝聯合家族辦公室</p>
+<form method="POST" action="${esc(opts.origin)}/auth/callback">
+<input type="hidden" name="token_hash" value="${esc(opts.tokenHash)}">
+<input type="hidden" name="type" value="${esc(opts.otpType)}">
+<input type="hidden" name="next" value="${esc(opts.next)}">
+<button class="btn" type="submit">點此完成登入 →</button>
+</form>
+<p class="note">為保護你的帳號,登入連結需在此再按一下才生效。<br>(這一步可避免連結被通訊軟體的網址預覽提前用掉)</p>
+</div></body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
@@ -47,29 +82,15 @@ export async function GET(request: Request) {
   const oauthErrDesc = searchParams.get('error_description');
 
   // 0) 一次性 Email 登入連結(管理員在「團隊成員」產生的 magic/invite 連結)。
-  //    走 verifyOtp(token_hash),不依賴 PKCE code verifier,跨瀏覽器/內建
-  //    瀏覽器皆穩。權限仍由 DB 端 restrict_email_domain(白名單)把關:
-  //    只有「新增成員」預建過 profile 的 email 才有有效連結可被產生。
+  //    GET 時「不」直接 verifyOtp——LINE/Email 的網址預覽機器人會搶先 GET
+  //    這個網址,若此處就 verifyOtp 會把一次性 token 燒掉,真人再點就失效
+  //    (實測 auth log 10× otp_expired、session 全是伺服器 UA)。
+  //    改為先回「點此完成登入」頁,只有真人按鈕送出的 POST 才 verifyOtp。
+  //    權限仍由 DB 端 restrict_email_domain(白名單)把關。
   const tokenHash = searchParams.get('token_hash');
   const otpType = searchParams.get('type');
   if (tokenHash && otpType) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({
-      type: otpType as EmailOtpType,
-      token_hash: tokenHash,
-    });
-    if (!error) return NextResponse.redirect(`${origin}${next}`);
-    return page({
-      origin,
-      advice:
-        '這條登入連結無法使用,通常是「已過期」或「已被用過一次」:\n' +
-        '• 請向管理員(Hugh)索取一條新的登入連結。\n' +
-        '• 連結請用電腦版 Chrome 或手機 Safari / Chrome 的「一般視窗」開啟,勿用 LINE/FB/IG 內建瀏覽器。\n' +
-        '• 同一條連結只能用一次,且有時效。',
-      tech:
-        `verifyOtp failed\ntype=${otpType}\nmessage=${error.message}\n` +
-        `status=${(error as unknown as { status?: number }).status ?? '-'}`,
-    });
+    return confirmPage({ origin, tokenHash, otpType, next });
   }
 
   // Google 直接帶錯誤回來(取消授權 / 組織封鎖 / App 未授權…)
@@ -155,5 +176,42 @@ export async function GET(request: Request) {
       '登入沒有成功。請截下方「技術細節」回報管理員,我們會立即處理。\n' +
       '可先嘗試:電腦版 Chrome 無痕視窗、直接輸入系統網址、確認用 @wsgfo.com 帳號登入。',
     tech,
+  });
+}
+
+// 真人在「完成登入」頁按下按鈕才會走到這裡(POST)。網址預覽/爬蟲只做
+// GET、不會送這個表單,故一次性 token 不會在真人點之前被消耗。
+export async function POST(request: Request) {
+  const { origin } = new URL(request.url);
+  const form = await request.formData();
+  const tokenHash = String(form.get('token_hash') ?? '');
+  const otpType = String(form.get('type') ?? '');
+  const next = String(form.get('next') || '/');
+
+  if (!tokenHash || !otpType) {
+    return page({
+      origin,
+      advice: '登入資訊不完整,請向管理員(Hugh)索取一條新的登入連結。',
+      tech: `missing on POST\ntoken_hash=${tokenHash ? 'present' : 'missing'}\ntype=${otpType || '-'}`,
+    });
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({
+    type: otpType as EmailOtpType,
+    token_hash: tokenHash,
+  });
+  if (!error) return NextResponse.redirect(`${origin}${next}`, { status: 303 });
+
+  return page({
+    origin,
+    advice:
+      '這條登入連結無法使用,通常是「已過期」或「已被用過一次」:\n' +
+      '• 請向管理員(Hugh)索取一條新的登入連結,收到後盡快點開並按「完成登入」。\n' +
+      '• 連結請用手機 Safari / Chrome 或電腦版 Chrome 的「一般視窗」開啟,勿用 LINE/FB/IG 內建瀏覽器。\n' +
+      '• 同一條連結只能用一次。',
+    tech:
+      `verifyOtp failed (POST)\ntype=${otpType}\nmessage=${error.message}\n` +
+      `status=${(error as unknown as { status?: number }).status ?? '-'}`,
   });
 }
