@@ -38,7 +38,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
   const [showSettings, setShowSettings] = useState(false);
   const [focusCollapsed, setFocusCollapsed] = useState(false);
   const [funnelCollapsed, setFunnelCollapsed] = useState(true);
-  const [filter, setFilter] = useState({ rm: '', stage: '' as StageId | '', tier: '' as Tier | '', redFlag: false, overdue: false, search: '', sort: 'updated' as 'updated' | 'aum' | 'score' | 'stage' });
+  const [filter, setFilter] = useState({ rm: '', team: '', stage: '' as StageId | '', tier: '' as Tier | '', redFlag: false, overdue: false, search: '', sort: 'updated' as 'updated' | 'aum' | 'score' | 'stage' });
   const tierCfg = settings.tier_config?.tiers ?? [];
 
   // DEMO 唯讀:任何寫入嘗試都攔下,只顯示提示,不送出、不改本地狀態
@@ -135,9 +135,17 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
       .map(x => x.deal);
   }, [deals, settings, tierCfg]);
 
+  // rm_id → team_id 對照(deals 的 rm join 不含 team_id,改用 profiles 查)
+  const teamOfRm = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const p of profiles) m.set(p.id, p.team_id);
+    return m;
+  }, [profiles]);
+
   const filteredDeals = useMemo(() => {
     const list = deals.filter(d => {
       if (filter.rm && d.rm_id !== filter.rm) return false;
+      if (filter.team && teamOfRm.get(d.rm_id) !== filter.team) return false;
       if (filter.stage && d.stage !== filter.stage) return false;
       if (filter.tier && d.tier !== filter.tier) return false;
       if (filter.redFlag && !redFlag(d, settings)) return false;
@@ -156,7 +164,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
       return new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime();
     });
     return list;
-  }, [deals, filter, settings, tierCfg]);
+  }, [deals, filter, settings, tierCfg, teamOfRm]);
 
   const stageCount = (id: StageId) => deals.filter(d => d.stage === id).length;
   const stageAum = (id: StageId) => deals.filter(d => d.stage === id).reduce((s, d) => s + Number(d.aum_usd ?? 0), 0);
@@ -780,8 +788,14 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
         <section className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap gap-2 items-center">
           <select value={filter.rm} onChange={e => setFilter(f => ({ ...f, rm: e.target.value }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
             <option value="">所有 RM</option>
-            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+            {profiles.filter(p => !filter.team || p.team_id === filter.team).map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
           </select>
+          {teams.length > 0 && (
+            <select value={filter.team} onChange={e => { const team = e.target.value; setFilter(f => ({ ...f, team, rm: team && f.rm && profiles.find(p => p.id === f.rm)?.team_id !== team ? '' : f.rm })); }} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
+              <option value="">所有團隊</option>
+              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
           <select value={filter.tier} onChange={e => setFilter(f => ({ ...f, tier: e.target.value as Tier | '' }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
             <option value="">所有等級</option>
             {tierCfg.map(t => <option key={t.key} value={t.key}>{t.key} {t.name}</option>)}
