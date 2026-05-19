@@ -142,16 +142,6 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     return m;
   }, [profiles]);
 
-  // 只列出「目前看得到的案件裡實際出現過」的團隊;<2 個時不顯示團隊篩選器
-  const visibleTeams = useMemo(() => {
-    const ids = new Set<string>();
-    for (const d of deals) {
-      const t = teamOfRm.get(d.rm_id);
-      if (t) ids.add(t);
-    }
-    return teams.filter(t => ids.has(t.id));
-  }, [deals, teams, teamOfRm]);
-
   const filteredDeals = useMemo(() => {
     const list = deals.filter(d => {
       if (filter.rm && d.rm_id !== filter.rm) return false;
@@ -800,10 +790,10 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
             <option value="">所有 RM</option>
             {profiles.filter(p => !filter.team || p.team_id === filter.team).map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
           </select>
-          {visibleTeams.length >= 2 && (
+          {teams.length > 0 && (
             <select value={filter.team} onChange={e => { const team = e.target.value; setFilter(f => ({ ...f, team, rm: team && f.rm && profiles.find(p => p.id === f.rm)?.team_id !== team ? '' : f.rm })); }} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
               <option value="">所有團隊</option>
-              {visibleTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
           <select value={filter.tier} onChange={e => setFilter(f => ({ ...f, tier: e.target.value as Tier | '' }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
