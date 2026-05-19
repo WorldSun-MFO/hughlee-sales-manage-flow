@@ -427,6 +427,19 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await refetchMemberStatus();
   }
 
+  // 產生「不經 Google」的一次性登入連結(admin 用;後端再次把關 + 用 service role)
+  async function generateLoginLink(email: string): Promise<string> {
+    if (IS_DEMO) { blockDemo(); return ''; }
+    const res = await fetch('/api/admin/login-link', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((j as { error?: string }).error || '產生連結失敗');
+    return (j as { link: string }).link;
+  }
+
   // 團隊 CRUD(僅 admin 用)
   async function addTeam(name: string) {
     if (IS_DEMO) { blockDemo(); return; }
@@ -928,6 +941,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           memberStatus={memberStatus}
           onBanMember={banMember}
           onUnbanMember={unbanMember}
+          onGenerateLoginLink={generateLoginLink}
           onAddTeam={addTeam}
           onUpdateTeam={updateTeam}
           onRemoveTeam={removeTeam}

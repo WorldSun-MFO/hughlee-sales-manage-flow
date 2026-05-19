@@ -18,6 +18,7 @@ interface Props {
   memberStatus: Record<string, { has_auth: boolean; banned: boolean }>;
   onBanMember: (email: string) => Promise<void>;
   onUnbanMember: (email: string) => Promise<void>;
+  onGenerateLoginLink: (email: string) => Promise<string>;
   onAddTeam: (name: string) => Promise<void>;
   onUpdateTeam: (id: string, name: string) => Promise<void>;
   onRemoveTeam: (id: string) => Promise<void>;
@@ -32,7 +33,7 @@ const ROLE_LABEL: Record<Role, string> = {
   admin: 'Admin',
 };
 
-export function SettingsModal({ settings, profile, allProfiles, painPoints, teams, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember, memberStatus, onBanMember, onUnbanMember, onAddTeam, onUpdateTeam, onRemoveTeam, onAddPain, onUpdatePain, onRemovePain }: Props) {
+export function SettingsModal({ settings, profile, allProfiles, painPoints, teams, onClose, onSave, onAddMember, onUpdateMember, onRemoveMember, memberStatus, onBanMember, onUnbanMember, onGenerateLoginLink, onAddTeam, onUpdateTeam, onRemoveTeam, onAddPain, onUpdatePain, onRemovePain }: Props) {
   const isAdmin = profile.role === 'admin';
   const isTeamLead = profile.role === 'team_lead';
   const canEditMembers = isAdmin || isTeamLead;
@@ -51,6 +52,8 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
   const [newTiers, setNewTiers] = useState('');
   const [addingPain, setAddingPain] = useState(false);
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null);
+  const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
+  const [genLinks, setGenLinks] = useState<Record<string, string>>({});
 
   async function handleBan(p: Profile) {
     const typed = window.prompt(
@@ -70,6 +73,18 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
     try { await onUnbanMember(p.email); }
     catch (err) { alert('復原失敗:' + (err as Error).message); }
     finally { setMemberBusyId(null); }
+  }
+
+  async function handleGenLink(p: Profile) {
+    setLinkBusyId(p.id);
+    try {
+      const link = await onGenerateLoginLink(p.email);
+      if (link) setGenLinks(m => ({ ...m, [p.id]: link }));
+    } catch (err) {
+      alert('產生登入連結失敗:' + (err as Error).message);
+    } finally {
+      setLinkBusyId(null);
+    }
   }
 
   async function submitNewMember() {
@@ -255,25 +270,47 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
                         </td>
                         <td className="px-2 py-1.5 text-right whitespace-nowrap">
                           {canEditThis && (
-                            <span className="inline-flex items-center gap-2">
-                              {st?.banned ? (
+                            <>
+                              <span className="inline-flex items-center gap-2">
+                                {st?.banned ? (
+                                  <button
+                                    onClick={() => handleUnban(p)}
+                                    disabled={memberBusyId === p.id}
+                                    className="text-emerald-600 hover:underline disabled:opacity-50"
+                                  >{memberBusyId === p.id ? '...' : '復原登入'}</button>
+                                ) : st?.has_auth ? (
+                                  <button
+                                    onClick={() => handleBan(p)}
+                                    disabled={memberBusyId === p.id}
+                                    className="text-amber-600 hover:underline disabled:opacity-50"
+                                  >{memberBusyId === p.id ? '...' : '停用登入'}</button>
+                                ) : null}
                                 <button
-                                  onClick={() => handleUnban(p)}
-                                  disabled={memberBusyId === p.id}
-                                  className="text-emerald-600 hover:underline disabled:opacity-50"
-                                >{memberBusyId === p.id ? '...' : '復原登入'}</button>
-                              ) : st?.has_auth ? (
+                                  onClick={() => handleGenLink(p)}
+                                  disabled={linkBusyId === p.id}
+                                  className="text-indigo-600 hover:underline disabled:opacity-50"
+                                  title="產生不經 Google 的一次性登入連結,複製後貼給對方"
+                                >{linkBusyId === p.id ? '...' : '登入連結'}</button>
                                 <button
-                                  onClick={() => handleBan(p)}
-                                  disabled={memberBusyId === p.id}
-                                  className="text-amber-600 hover:underline disabled:opacity-50"
-                                >{memberBusyId === p.id ? '...' : '停用登入'}</button>
-                              ) : null}
-                              <button
-                                onClick={() => { if (confirm(`移除「${p.full_name || p.email}」?若對方已登入過,其案件會無法再指派`)) onRemoveMember(p.id); }}
-                                className="text-rose-500 hover:underline"
-                              >移除</button>
-                            </span>
+                                  onClick={() => { if (confirm(`移除「${p.full_name || p.email}」?若對方已登入過,其案件會無法再指派`)) onRemoveMember(p.id); }}
+                                  className="text-rose-500 hover:underline"
+                                >移除</button>
+                              </span>
+                              {genLinks[p.id] && (
+                                <div className="mt-1 flex items-center justify-end gap-1">
+                                  <input
+                                    readOnly
+                                    value={genLinks[p.id]}
+                                    onFocus={e => e.currentTarget.select()}
+                                    className="w-44 px-1 py-0.5 border border-slate-200 rounded text-[10px] text-slate-600"
+                                  />
+                                  <button
+                                    onClick={() => { navigator.clipboard?.writeText(genLinks[p.id]); }}
+                                    className="text-indigo-600 hover:underline text-[11px]"
+                                  >複製</button>
+                                </div>
+                              )}
+                            </>
                           )}
                         </td>
                       </tr>
