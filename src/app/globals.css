@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,6 +10,7 @@
 }
 
 @layer components {
+  /* 既有 Dashboard 的 stage 配色(藍紫系)— 維持不動 */
   .stage-L1 { background: #e2e8f0; color: #475569; }
   .stage-L2 { background: #cbd5e1; color: #334155; }
   .stage-L3 { background: #bae6fd; color: #075985; }
@@ -19,3 +22,48 @@
 
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+/* ============================================================
+ * V4 platform — 全部作用域包在 .v4-root 下,完全不污染現有路由
+ * 啟用方式:在 /v4/* 的 layout.tsx 把 <body> 內層裹 <div class="v4-root">
+ * ============================================================ */
+
+.v4-root {
+  --ink: #0e0d0c;
+  --graphite: #1f1d1b;
+  --ash: #3a3733;
+  --paper: #f5f1e8;
+  --parchment: #ebe4d4;
+  --forest: #1d4d3a;
+  --brass: #8b6f2a;
+  --claret: #7a2222;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: '"IBM Plex Sans"', '"Helvetica Neue"', 'system-ui', sans-serif;
+  font-feature-settings: 'ss01', 'ss02', 'cv11';
+}
+
+.v4-root .numeric { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum', 'lnum'; }
+
+.v4-root .label-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.v4-root .hairline { background: linear-gradient(90deg, transparent, rgba(14,13,12,0.18), transparent); height: 1px; }
+
+.v4-root .dot-grid {
+  background-image: radial-gradient(rgba(14,13,12,0.06) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* V4 階段配色(土系)— 蓋掉外層 globals 的藍紫系,只在 v4-root 內生效 */
+.v4-root .stage-L1 { background: #e8e6e1; color: #3a3733; }
+.v4-root .stage-L2 { background: #d8e9e0; color: #154d35; }
+.v4-root .stage-L3 { background: #bfdac9; color: #0f3f2b; }
+.v4-root .stage-L4 { background: #f0d699; color: #5a3f0a; }
+.v4-root .stage-L5 { background: #d7a45f; color: #2e1a02; }
+.v4-root .stage-L6 { background: #c1781e; color: #fff; }
+.v4-root .stage-L7 { background: #1d4d3a; color: #fff; }
