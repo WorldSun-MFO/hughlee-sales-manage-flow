@@ -9,6 +9,11 @@ import { PlanModal } from './PlanModal';
 import { ClientAmmoCard } from './market/ClientAmmoCard';
 import { IS_DEMO } from '@/lib/demo';
 
+// 介面卡
+// 客戶彈藥庫 <ClientAmmoCard>（src/components/market/ClientAmmoCard.tsx），API 路由 /api/ai/client-talking-points
+// tier 按鈕顯示使用 /lib/utils/getTierFromAum
+// 階段推進、痛點的功能在 lib/constants.ts
+
 interface Props {
   deal: Deal;
   settings: Settings;
@@ -50,7 +55,7 @@ export function DealDetail({
   const [newComment, setNewComment] = useState('');
   const [showAIChat, setShowAIChat] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
-  const scores = deal.scores ?? { m:0, e:0, d1:0, d2:0, p:0, i:0, c1:0, c2:0 };
+  const scores = deal.scores ?? { m: 0, e: 0, d1: 0, d2: 0, p: 0, i: 0, c1: 0, c2: 0 };
   const total = totalScore(deal);
   const flag = redFlag(deal, settings);
   const items = CHECKLIST[deal.stage] ?? [];
@@ -255,10 +260,9 @@ export function DealDetail({
                   >📞 剛聯繫過</button>
                 </div>
                 {contactInfo && (
-                  <div className={`text-[11px] mt-1 font-medium ${
-                    contactInfo.status === 'overdue' ? 'text-rose-600' :
+                  <div className={`text-[11px] mt-1 font-medium ${contactInfo.status === 'overdue' ? 'text-rose-600' :
                     contactInfo.status === 'due_soon' ? 'text-amber-600' : 'text-emerald-600'
-                  }`}>
+                    }`}>
                     {contactInfo.status === 'overdue' && `⚠ 已逾期 ${contactInfo.deltaDays} 天未聯繫`}
                     {contactInfo.status === 'due_soon' && `🔔 ${Math.abs(contactInfo.deltaDays)} 天內需聯繫`}
                     {contactInfo.status === 'ok' && `✓ 已聯繫 ${contactInfo.daysSince} 天(週期內)`}
@@ -602,11 +606,10 @@ export function DealDetail({
               )}
               <ul className="mt-2 space-y-1.5 max-h-60 overflow-y-auto scrollbar-thin">
                 {(deal.comments ?? []).slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(c => (
-                  <li key={c.id} className={`text-sm rounded px-2 py-1.5 border ${
-                    c.is_raw ? 'bg-amber-50 border-amber-100'
+                  <li key={c.id} className={`text-sm rounded px-2 py-1.5 border ${c.is_raw ? 'bg-amber-50 border-amber-100'
                     : c.is_system ? 'bg-slate-50 border-slate-100'
-                    : 'bg-slate-50 border-slate-100'
-                  }`}>
+                      : 'bg-slate-50 border-slate-100'
+                    }`}>
                     <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleString('zh-TW', { hour12: false })}</div>
                     <div>
                       {c.is_raw ? <span className="text-amber-700 font-medium">📝 原話 · </span>
@@ -657,6 +660,7 @@ export function DealDetail({
 }
 
 // ===== Attachments Section (Sprint C) =====
+// 客戶檔案區功能（檔名+刪除）
 function AttachmentsSection({ attachments, onUpload, onDelete, onGetUrl }: {
   attachments: DealAttachment[];
   onUpload: (file: File) => Promise<DealAttachment>;
@@ -703,7 +707,7 @@ function AttachmentsSection({ attachments, onUpload, onDelete, onGetUrl }: {
     if (url) window.open(url, '_blank');
   }
 
-  const fmtSize = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
+  const fmtSize = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 
   return (
     <div className="mt-3">

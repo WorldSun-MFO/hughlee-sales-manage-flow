@@ -4,6 +4,8 @@ import { IS_DEMO } from '@/lib/demo';
 import { getAnthropic } from '@/lib/anthropic/client';
 
 // 規劃用 Opus 4.7 + adaptive thinking,Vercel Pro 已升級,300 秒上限
+// 銷售漏斗彈出視窗的 規劃
+
 const PLAN_MODEL = 'claude-opus-4-7';
 import { PLAYBOOK_KNOWLEDGE } from '@/lib/anthropic/playbook';
 import { GeneratePlanResponseSchema, GENERATE_PLAN_JSON_SCHEMA } from '@/lib/anthropic/schemas';
@@ -153,7 +155,7 @@ function compactDealContext(deal: Record<string, unknown>): string {
   const rm = deal.rm as { full_name: string } | null;
 
   const scoreLine = scores
-    ? `MEDDIC: M${scores.m}/E${scores.e}/D1:${scores.d1}/D2:${scores.d2}/P${scores.p}/I${scores.i}/C1:${scores.c1}/C2:${scores.c2} 總分${(scores.m ?? 0)+(scores.e ?? 0)+(scores.d1 ?? 0)+(scores.d2 ?? 0)+(scores.p ?? 0)+(scores.i ?? 0)+(scores.c1 ?? 0)+(scores.c2 ?? 0)}/80`
+    ? `MEDDIC: M${scores.m}/E${scores.e}/D1:${scores.d1}/D2:${scores.d2}/P${scores.p}/I${scores.i}/C1:${scores.c1}/C2:${scores.c2} 總分${(scores.m ?? 0) + (scores.e ?? 0) + (scores.d1 ?? 0) + (scores.d2 ?? 0) + (scores.p ?? 0) + (scores.i ?? 0) + (scores.c1 ?? 0) + (scores.c2 ?? 0)}/80`
     : 'MEDDIC: 尚未評分';
 
   const noteLines = notes.filter(n => n.evidence || n.next_action)

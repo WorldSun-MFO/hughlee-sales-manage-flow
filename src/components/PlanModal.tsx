@@ -8,6 +8,9 @@ interface Props {
   onSavePlan: (plan: DealPlan, targetDate: string) => Promise<void>;
 }
 
+// 連接 /api/ai/generate-plan
+// 銷售漏斗彈出視窗的 規劃
+
 export function PlanModal({ deal, onClose, onSavePlan }: Props) {
   const defaultDate = deal.target_close_date
     || new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
@@ -63,13 +66,13 @@ export function PlanModal({ deal, onClose, onSavePlan }: Props) {
   const feasBadge = plan ? (
     plan.feasibility === 'high' ? 'bg-emerald-100 text-emerald-700'
       : plan.feasibility === 'medium' ? 'bg-amber-100 text-amber-700'
-      : 'bg-rose-100 text-rose-700'
+        : 'bg-rose-100 text-rose-700'
   ) : '';
 
   const feasLabel = plan ? (
     plan.feasibility === 'high' ? '可行性高'
       : plan.feasibility === 'medium' ? '可行性中等'
-      : '可行性低 · 風險大'
+        : '可行性低 · 風險大'
   ) : '';
 
   return (
@@ -330,17 +333,19 @@ export function PlanModal({ deal, onClose, onSavePlan }: Props) {
                   ))}
                 </div>
                 <button
-                  onClick={() => setPlan({ ...plan, steps: [...plan.steps, {
-                    id: `s${plan.steps.length + 1}_${Date.now()}`,
-                    title: '',
-                    target_date: new Date().toISOString().slice(0, 10),
-                    stage_transition: '',
-                    focus: [],
-                    talking_points: [],
-                    risks: [],
-                    completed: false,
-                    completed_at: null,
-                  }] })}
+                  onClick={() => setPlan({
+                    ...plan, steps: [...plan.steps, {
+                      id: `s${plan.steps.length + 1}_${Date.now()}`,
+                      title: '',
+                      target_date: new Date().toISOString().slice(0, 10),
+                      stage_transition: '',
+                      focus: [],
+                      talking_points: [],
+                      risks: [],
+                      completed: false,
+                      completed_at: null,
+                    }]
+                  })}
                   className="mt-2 w-full py-1.5 text-xs border border-dashed border-slate-300 hover:border-indigo-400 text-slate-600 hover:text-indigo-600 rounded"
                 >+ 加里程碑</button>
               </div>

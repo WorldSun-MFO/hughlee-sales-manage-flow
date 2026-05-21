@@ -17,6 +17,9 @@ interface Props {
   }) => Promise<void>;
 }
 
+// 連接 /api/ai/parse-interaction
+// 前端銷售漏斗彈出視窗的 AI 助手
+
 export function AIChatModal({ deal, onClose, onSaveRawText, onUploadAttachment, onApply }: Props) {
   const [pendingFiles, setPendingFiles] = useState<DealAttachment[]>([]);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -166,7 +169,7 @@ export function AIChatModal({ deal, onClose, onSaveRawText, onUploadAttachment, 
                 />
               </label>
               <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
-                💡 <b>原話會被完整保留</b>(時間軸 + 對話原稿區),AI 摘要另存。建議可<b>逐項編輯</b>後再套用。<br/>
+                💡 <b>原話會被完整保留</b>(時間軸 + 對話原稿區),AI 摘要另存。建議可<b>逐項編輯</b>後再套用。<br />
                 📎 可附上照片/合約/語音檔(自動存到「📂 客戶檔案」區)。
               </div>
 
