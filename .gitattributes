@@ -1,0 +1,22 @@
+# 全部文字檔以 LF 儲存於 repo;checkout 時亦以 LF 寫入工作區。
+# 解決 WSL/Windows 混用造成的 CRLF 噪音(整個 repo 上百個檔案誤判 modified)。
+* text=auto eol=lf
+
+# Windows 專屬腳本仍用 CRLF
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# 二進位明確標記,避免被當文字處理
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.pdf   binary
+*.zip   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
