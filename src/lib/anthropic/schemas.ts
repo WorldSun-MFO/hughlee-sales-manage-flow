@@ -1,3 +1,20 @@
+// ============================================================
+// AI route 的輸入輸出契約 — JSON Schema + Zod 雙保險
+// ============================================================
+// 每個 AI feature 都有兩份 schema:
+//   FOO_JSON_SCHEMA      → 送給 Anthropic API,讓模型強制依結構輸出
+//   FooResponseSchema    → 收到回應後用 Zod 二次驗證
+// 雙保險原因:Anthropic 偶爾會多/少欄位,Zod 是最後一道防線。
+//
+// 對應的 route:
+//   PARSE_INTERACTION  ←→ /api/ai/parse-interaction  ←→ AIChatModal
+//   GENERATE_PLAN      ←→ /api/ai/generate-plan      ←→ PlanModal
+//   MARKET_PARSE       ←→ /api/ai/market-parse       ←→ Market 新增情報
+//   CLIENT_AMMO        ←→ /api/ai/client-talking-points ←→ DealDetail ClientAmmoCard
+//   MARKET_SYNTHESIS   ←→ /api/ai/market-synthesis   ←→ /market/synthesis
+//
+// 改 schema 時一定要兩邊同步,不然 Zod 會擋掉合法 AI 回應。
+// ============================================================
 import { z } from 'zod';
 
 // ====== Feature A: Parse Interaction ======

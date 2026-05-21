@@ -1,3 +1,23 @@
+// ============================================================
+// 業務常數字典 — Playbook v2.1 寫死的方法論
+// ============================================================
+// 這裡所有 export 都是「不會變的銷售規則」,不是 DB 資料:
+//   DEFAULT_TIER_CONFIG  : 五個客戶等級的 AUM 門檻 + 聯繫週期
+//                          (settings 表預設值,admin 可在 SettingsModal 改)
+//   TIER_STYLES          : Tier badge 的 Tailwind class
+//   STAGES               : L1-L7 的中文名與目標轉換率
+//   MEDDIC               : 8 字母的 label + hint(顯示在 DealDetail 評分卡)
+//   CHECKLIST            : 每階段推進需勾完的關鍵問題(stage_checklist 表的 item_key)
+//   STAGE_PROMPTS        : 每階段的目標 / 入口 / 出口 / 必記 / 建議動作
+//                          (顯示在 DealDetail 頂部黃色提示卡)
+//   QUESTION_BANK        : 實戰題庫,每字母 4-9 題,有穩定 key
+//                          (deal_questions 表用 question_key 比對)
+//   PAIN_MATRIX          : 痛點 → 商品的預設配對(pain_points 表預設值)
+//
+// 重要:QUESTION_BANK / CHECKLIST 裡的 key (如 'm_aum', 'l2_aum')
+//      一旦定下就「不要改」,DB 用它當穩定識別,改 key 等於遺失歷史紀錄。
+//      可以改題目文字、可以加新題,但既有 key 留著。
+// ============================================================
 import type { StageId, Scores, TierConfigItem } from './types';
 
 export const DEFAULT_TIER_CONFIG: TierConfigItem[] = [

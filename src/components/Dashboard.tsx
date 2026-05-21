@@ -1,16 +1,45 @@
+// ============================================================
+// Dashboard — 整個 CRM 的 client 端中樞
+// ============================================================
+// 職責(只剩三類):
+//   1. 持有全站 state(deals / profiles / tasks / teams / painPoints / settings / filter)
+//   2. 提供所有寫入動作函式(patchDeal、addTask、banMember...),
+//      子元件透過 props callback 觸發
+//   3. 組裝 UI section(Header / KpiTiles / FocusList / Funnel / FilterBar / DealList +
+//      三個 Modal: DealDetail / NewDealModal / SettingsModal + TasksTab)
+//
+// 不再內聯 UI section — 全部抽到 src/components/dashboard/ 下,各檔有自己的 header doc。
+//
+// 互動表(這支會寫到的 Supabase tables 與 storage):
+//   deals / scores / score_notes / stage_checklist / deal_questions / comments /
+//   deal_attachments / tasks / profiles / teams / pain_points / settings
+//   Storage bucket: deal-attachments
+//   RPC: admin_member_status / admin_ban_user / admin_unban_user
+//   API route: /api/admin/login-link
+//
+// 所有寫入都用 optimistic update(先改本地 state,Supabase 寫入失敗時不會自動 rollback,
+// 但 useRealtimeSync 會 250ms 後拿回真相覆蓋)。
+// ============================================================
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { IS_DEMO } from '@/lib/demo';
-import { STAGES, TIER_STYLES } from '@/lib/constants';
+import { STAGES } from '@/lib/constants';
 import type { Deal, DealAttachment, DealPlan, PainPoint, Profile, Role, Settings, StageId, Scores, Task, TaskPriority, Team, Tier } from '@/lib/types';
-import { fmtMoney, totalScore, redFlag, daysSince, stageIdx, contactOverdue, getTierFromAum, priorityReason, urgencyScore, dealsToCSV, downloadCSV, splitNextStepIntoTasks } from '@/lib/utils';
+import { totalScore, redFlag, stageIdx, contactOverdue, getTierFromAum, dealsToCSV, downloadCSV, splitNextStepIntoTasks } from '@/lib/utils';
 import { DealDetail } from './DealDetail';
 import { NewDealModal } from './NewDealModal';
 import { SettingsModal } from './SettingsModal';
 import { TasksTab } from './TasksTab';
+import { Header } from './dashboard/Header';
+import { KpiTiles } from './dashboard/KpiTiles';
+import { FocusList } from './dashboard/FocusList';
+import { Funnel } from './dashboard/Funnel';
+import { FilterBar, type FilterState } from './dashboard/FilterBar';
+import { DealList } from './dashboard/DealList';
+import { useRealtimeSync } from './dashboard/useRealtimeSync';
 
 interface Props {
   initialDeals: Deal[];
@@ -25,23 +54,35 @@ interface Props {
 export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoints, initialTeams, initialTasks, settings: initialSettings }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+
+  // ===== 全站 state =====
   const [deals, setDeals] = useState<Deal[]>(initialDeals);
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [profiles, setProfiles] = useState<Profile[]>(allProfiles);
   const [painPoints, setPainPoints] = useState<PainPoint[]>(initialPainPoints);
   const [teams, setTeams] = useState<Team[]>(initialTeams);
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  // memberStatus 是 admin RPC 抓的「使用者是否已建 auth、是否被停用」,非 admin 拿到空物件
   const [memberStatus, setMemberStatus] = useState<Record<string, { has_auth: boolean; banned: boolean }>>({});
+
+  // ===== UI state =====
   const [activeTab, setActiveTab] = useState<'pipeline' | 'tasks'>('pipeline');
   const [currentDealId, setCurrentDealId] = useState<string | null>(null);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [focusCollapsed, setFocusCollapsed] = useState(false);
   const [funnelCollapsed, setFunnelCollapsed] = useState(true);
-  const [filter, setFilter] = useState({ rm: '', team: '', stage: '' as StageId | '', tier: '' as Tier | '', redFlag: false, overdue: false, search: '', sort: 'updated' as 'updated' | 'aum' | 'score' | 'stage' });
+  const [filter, setFilter] = useState<FilterState>({
+    rm: '', team: '', stage: '' as StageId | '', tier: '' as Tier | '',
+    redFlag: false, overdue: false, search: '', sort: 'updated',
+  });
   const tierCfg = settings.tier_config?.tiers ?? [];
 
-  // DEMO 唯讀:任何寫入嘗試都攔下,只顯示提示,不送出、不改本地狀態
+  // ===== Realtime 訂閱 =====
+  useRealtimeSync(supabase, { setDeals, setProfiles, setPainPoints, setTeams, setTasks });
+
+  // ===== Demo 唯讀守門 =====
+  // demo 環境任何寫入都會被 blockDemo() 攔下,顯示「示範環境唯讀」提示 2.6s
   const [demoNotice, setDemoNotice] = useState(false);
   const demoNoticeTimer = useRef<number | null>(null);
   function blockDemo() {
@@ -50,98 +91,17 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     demoNoticeTimer.current = window.setTimeout(() => setDemoNotice(false), 2600);
   }
 
+  // ===== 衍生資料 =====
   const currentDeal = currentDealId ? deals.find(d => d.id === currentDealId) ?? null : null;
 
-  // --- Realtime sync ---
-  useEffect(() => {
-    if (IS_DEMO) return; // demo 不連 Supabase,無 realtime
-    const channel = supabase
-      .channel('pipeline-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deals' }, () => refetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, () => refetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'score_notes' }, () => refetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stage_checklist' }, () => refetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => refetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deal_questions' }, () => refetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => refetchProfiles())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pain_points' }, () => refetchPainPoints())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, () => refetchTeams())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => refetchTasks())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deal_attachments' }, () => refetch())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const refetchRef = useRef<number | null>(null);
-  const refetch = useCallback(() => {
-    if (refetchRef.current) window.clearTimeout(refetchRef.current);
-    refetchRef.current = window.setTimeout(async () => {
-      const { data } = await supabase
-        .from('deals')
-        .select('*, scores(*), score_notes(*), stage_checklist(*), deal_questions(*), deal_attachments(*), comments(id, deal_id, author_id, body, is_system, is_raw, created_at), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)')
-        .order('last_updated', { ascending: false });
-      if (data) setDeals(data as Deal[]);
-    }, 250);
-  }, [supabase]);
-
-  const refetchProfiles = useCallback(async () => {
-    const { data } = await supabase.from('profiles').select('*').order('full_name');
-    if (data) setProfiles(data as Profile[]);
-  }, [supabase]);
-
-  const refetchPainPoints = useCallback(async () => {
-    const { data } = await supabase.from('pain_points').select('*').eq('is_active', true).order('order_idx');
-    if (data) setPainPoints(data as PainPoint[]);
-  }, [supabase]);
-
-  const refetchTeams = useCallback(async () => {
-    const { data } = await supabase.from('teams').select('*').order('name');
-    if (data) setTeams(data as Team[]);
-  }, [supabase]);
-
-  const refetchTasks = useCallback(async () => {
-    const { data } = await supabase.from('tasks').select('*').order('due_date', { ascending: true, nullsFirst: false });
-    if (data) setTasks(data as Task[]);
-  }, [supabase]);
-
-  // 成員 auth/ban 狀態(前端讀不到 auth schema,走 admin-only RPC;非 admin 回空)
-  const refetchMemberStatus = useCallback(async () => {
-    if (IS_DEMO) return; // demo 不連 Supabase
-    if (profile.role !== 'admin') return;
-    const { data } = await supabase.rpc('admin_member_status');
-    const rows = (data ?? []) as Array<{ id: string; has_auth: boolean; banned: boolean }>;
-    setMemberStatus(Object.fromEntries(rows.map(r => [r.id, { has_auth: r.has_auth, banned: r.banned }])));
-  }, [supabase, profile.role]);
-
-  useEffect(() => { refetchMemberStatus(); }, [refetchMemberStatus]);
-
-  // --- Derived ---
-  const totalAum = useMemo(() => deals.filter(d => d.stage !== 'L7').reduce((s, d) => s + Number(d.aum_usd ?? 0), 0), [deals]);
-  const weightedForecast = useMemo(() => deals.reduce((s, d) => s + Number(d.aum_usd ?? 0) * (settings.stage_probs[d.stage] ?? 0) / 100, 0), [deals, settings]);
-  const l4PlusCount = deals.filter(d => ['L4','L5','L6','L7'].includes(d.stage)).length;
-  const l4PlusPct = deals.length ? Math.round(l4PlusCount / deals.length * 100) : 0;
-  const redFlagCount = deals.filter(d => redFlag(d, settings)).length;
-  const activeDealsCount = deals.filter(d => d.stage !== 'L7').length;
-  const overdueCount = deals.filter(d => d.stage !== 'L7' && contactOverdue(d, tierCfg)?.status === 'overdue').length;
-  const dueSoonCount = deals.filter(d => d.stage !== 'L7' && contactOverdue(d, tierCfg)?.status === 'due_soon').length;
-
-  const priorityDeals = useMemo(() => {
-    return deals
-      .map(d => ({ deal: d, score: urgencyScore(d, settings, tierCfg) }))
-      .filter(x => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10)
-      .map(x => x.deal);
-  }, [deals, settings, tierCfg]);
-
-  // rm_id → team_id 對照(deals 的 rm join 不含 team_id,改用 profiles 查)
+  // rm_id → team_id 對照表(deals 的 rm join 沒帶 team_id,要靠 profiles 補)
   const teamOfRm = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const p of profiles) m.set(p.id, p.team_id);
     return m;
   }, [profiles]);
 
+  // 經過 filter + sort 的案件清單,傳給 DealList 直接渲染
   const filteredDeals = useMemo(() => {
     const list = deals.filter(d => {
       if (filter.rm && d.rm_id !== filter.rm) return false;
@@ -166,21 +126,43 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     return list;
   }, [deals, filter, settings, tierCfg, teamOfRm]);
 
-  const stageCount = (id: StageId) => deals.filter(d => d.stage === id).length;
-  const stageAum = (id: StageId) => deals.filter(d => d.stage === id).reduce((s, d) => s + Number(d.aum_usd ?? 0), 0);
-  const stageBarPct = (id: StageId) => {
-    const maxCount = Math.max(1, ...STAGES.map(s => stageCount(s.id)));
-    return stageCount(id) / maxCount * 100;
-  };
+  // 成員 auth/ban 狀態:admin 才會抓(前端讀不到 auth schema,走 admin-only RPC)
+  useEffect(() => {
+    if (IS_DEMO || profile.role !== 'admin') return;
+    refetchMemberStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // --- Actions ---
+  async function refetchMemberStatus() {
+    if (IS_DEMO || profile.role !== 'admin') return;
+    const { data } = await supabase.rpc('admin_member_status');
+    const rows = (data ?? []) as Array<{ id: string; has_auth: boolean; banned: boolean }>;
+    setMemberStatus(Object.fromEntries(rows.map(r => [r.id, { has_auth: r.has_auth, banned: r.banned }])));
+  }
+
+  // ============================================================
+  // 動作函式 — 全部 optimistic(先改本地,再 await 寫 DB)
+  // ============================================================
+  // 為什麼 optimistic:UI 反應要即時,使用者不該等網路 round trip。
+  // 失敗時不自動 rollback(本系統可接受;realtime 會在 250ms 後拿回真相覆蓋)。
+  //
+  // IS_DEMO 守門:demo 環境一律 blockDemo() 並 return,確保不打 Supabase。
+  // ============================================================
+
+  // ---------- 一般 ----------
   async function signOut() {
-    if (IS_DEMO) return; // demo 無登入,不動作
+    if (IS_DEMO) return;
     await supabase.auth.signOut();
     router.push('/login');
   }
 
-  // Patch a deal locally (optimistic) then persist
+  function handleExportCSV() {
+    const csv = dealsToCSV(deals, settings, tierCfg);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCSV(`worldsun-pipeline-${date}.csv`, csv);
+  }
+
+  // ---------- Deal CRUD(deals 表)----------
   async function patchDeal(dealId: string, patch: Partial<Deal>) {
     if (IS_DEMO) { blockDemo(); return; }
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, ...patch, last_updated: new Date().toISOString() } : d));
@@ -188,6 +170,47 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('deals').update(payload).eq('id', dealId);
   }
 
+  async function createDeal(input: { name: string; rm_id: string; aum_usd: number; product: string; first_contact: string }) {
+    if (IS_DEMO) { blockDemo(); return; }
+    const tier = getTierFromAum(input.aum_usd, tierCfg);
+    const nowIso = new Date().toISOString();
+    const { data } = await supabase.from('deals').insert({
+      name: input.name.trim(), rm_id: input.rm_id, aum_usd: input.aum_usd, product: input.product,
+      first_contact: input.first_contact, stage: 'L1', tier, last_contact_at: nowIso, created_by: profile.id,
+    }).select('*, scores(*), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)').single();
+    if (data) {
+      setDeals(prev => [data as Deal, ...prev]);
+      setShowNewDeal(false);
+      setCurrentDealId((data as Deal).id);
+    }
+  }
+
+  async function deleteDeal(dealId: string) {
+    if (IS_DEMO) { blockDemo(); return; }
+    setDeals(prev => prev.filter(d => d.id !== dealId));
+    setCurrentDealId(null);
+    // 注意:刪除後可由 admin 用 restore_deleted_deal(uuid) 從 audit_log 還原
+    //      詳見 migration_17 與 docs/RECOVERY.md
+    await supabase.from('deals').delete().eq('id', dealId);
+  }
+
+  async function advanceStage(dealId: string) {
+    if (IS_DEMO) { blockDemo(); return; }
+    const deal = deals.find(d => d.id === dealId); if (!deal) return;
+    const next = stageIdx(deal.stage) < STAGES.length - 1 ? STAGES[stageIdx(deal.stage) + 1].id : null;
+    if (!next) return;
+    await patchDeal(dealId, { stage: next });
+    await addComment(dealId, `推進:${deal.stage} → ${next}`, true);
+  }
+
+  async function quickLogContact(dealId: string) {
+    if (IS_DEMO) { blockDemo(); return; }
+    const nowIso = new Date().toISOString();
+    await patchDeal(dealId, { last_contact_at: nowIso });
+    await addComment(dealId, `📞 已記錄本次聯繫`);
+  }
+
+  // ---------- Score / 筆記(scores、score_notes 表)----------
   async function patchScore(dealId: string, patch: Partial<Scores>) {
     if (IS_DEMO) { blockDemo(); return; }
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, scores: { ...d.scores!, ...patch }, last_updated: new Date().toISOString() } : d));
@@ -209,6 +232,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('score_notes').upsert({ deal_id: dealId, field, ...patch });
   }
 
+  // ---------- Checklist / 題庫(stage_checklist、deal_questions 表)----------
   async function toggleChecklist(dealId: string, itemKey: string) {
     if (IS_DEMO) { blockDemo(); return; }
     const deal = deals.find(d => d.id === dealId); if (!deal) return;
@@ -223,6 +247,23 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     }
   }
 
+  async function toggleQuestion(dealId: string, questionKey: string) {
+    if (IS_DEMO) { blockDemo(); return; }
+    const deal = deals.find(d => d.id === dealId); if (!deal) return;
+    const existing = deal.deal_questions?.find(q => q.question_key === questionKey);
+    if (existing?.answered) {
+      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, deal_questions: (d.deal_questions ?? []).filter(q => q.question_key !== questionKey) } : d));
+      await supabase.from('deal_questions').delete().eq('deal_id', dealId).eq('question_key', questionKey);
+    } else {
+      const item = { deal_id: dealId, question_key: questionKey, answered: true, note: '', asked_at: new Date().toISOString() };
+      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, deal_questions: [...(d.deal_questions ?? []), item] } : d));
+      await supabase.from('deal_questions').upsert({ deal_id: dealId, question_key: questionKey, answered: true, asked_by: profile.id });
+    }
+  }
+
+  // ---------- Comments(comments 表)----------
+  // is_system=true → 系統訊息(階段推進、AI 套用後寫入)
+  // is_raw=true   → 原始對話(從 AI 助手「分析」按下時觸發,保留 audit trail)
   async function addComment(dealId: string, body: string, isSystem = false, isRaw = false) {
     if (IS_DEMO) { blockDemo(); return; }
     const { data } = await supabase.from('comments')
@@ -233,13 +274,13 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     }
   }
 
-  // 存原始未經 AI 處理的文字(從 AI助手「分析」按下時觸發)
+  // 存原始未經 AI 處理的文字
   async function saveRawText(dealId: string, rawText: string) {
     if (IS_DEMO) { blockDemo(); return; }
     await addComment(dealId, rawText, false, true);
   }
 
-  // ===== 任務 CRUD(Sprint B) =====
+  // ---------- Tasks(tasks 表,Sprint B)----------
   async function addTask(input: {
     title: string; deal_id: string | null; assignee_id: string | null;
     due_date: string | null; priority: TaskPriority;
@@ -264,24 +305,36 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('tasks').delete().eq('id', id);
   }
 
-  // ===== 檔案附件 CRUD(Sprint C) =====
+  // 把 deal.next_step 拆成多筆獨立任務(用 splitNextStepIntoTasks 支援多種編號格式)
+  async function promoteNextStepToTask(dealId: string) {
+    if (IS_DEMO) { blockDemo(); return; }
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal?.next_step?.trim()) { alert('此案件沒有下一步可升級'); return; }
+    const lines = splitNextStepIntoTasks(deal.next_step);
+    if (lines.length === 0) { alert('沒有可升級的任務內容'); return; }
+    for (const line of lines) {
+      await addTask({ title: line, deal_id: dealId, assignee_id: deal.rm_id, due_date: null, priority: 'normal' });
+    }
+    alert(`已建立 ${lines.length} 筆任務`);
+  }
+
+  // 把 Plan 的單一 focus 動作升級成任務
+  async function promotePlanFocus(dealId: string, opts: { title: string; targetDate?: string | null; sourceRef?: string }) {
+    if (IS_DEMO) { blockDemo(); return; }
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+    await addTask({ title: opts.title, deal_id: dealId, assignee_id: deal.rm_id, due_date: opts.targetDate ?? null, priority: 'normal' });
+  }
+
+  // ---------- Attachments(deal_attachments 表 + Storage bucket deal-attachments)----------
   async function uploadAttachment(dealId: string, file: File): Promise<DealAttachment> {
     if (IS_DEMO) { blockDemo(); throw new Error('示範環境為唯讀,無法上傳'); }
     const ext = file.name.split('.').pop() ?? 'bin';
     const storagePath = `${dealId}/${crypto.randomUUID()}.${ext}`;
-    const { error: upErr } = await supabase.storage
-      .from('deal-attachments')
-      .upload(storagePath, file, { contentType: file.type });
+    const { error: upErr } = await supabase.storage.from('deal-attachments').upload(storagePath, file, { contentType: file.type });
     if (upErr) throw upErr;
     const { data, error } = await supabase.from('deal_attachments')
-      .insert({
-        deal_id: dealId,
-        storage_path: storagePath,
-        file_name: file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        uploaded_by: profile.id,
-      })
+      .insert({ deal_id: dealId, storage_path: storagePath, file_name: file.name, mime_type: file.type, size_bytes: file.size, uploaded_by: profile.id })
       .select().single();
     if (error) throw error;
     setDeals(prev => prev.map(d => d.id === dealId
@@ -304,89 +357,21 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
 
   async function getAttachmentUrl(storagePath: string): Promise<string> {
     if (IS_DEMO) return '';
-    const { data } = await supabase.storage
-      .from('deal-attachments')
-      .createSignedUrl(storagePath, 3600);
+    const { data } = await supabase.storage.from('deal-attachments').createSignedUrl(storagePath, 3600);
     return data?.signedUrl ?? '';
   }
 
-  // 把 deal.next_step 多行內容拆成多筆獨立任務(從 DealDetail 觸發)
-  async function promoteNextStepToTask(dealId: string) {
-    if (IS_DEMO) { blockDemo(); return; }
-    const deal = deals.find(d => d.id === dealId);
-    if (!deal?.next_step?.trim()) { alert('此案件沒有下一步可升級'); return; }
-    // 拆成一項一筆(支援換行,也支援「1. A 2. B」擠在同一行的退化格式)
-    const lines = splitNextStepIntoTasks(deal.next_step);
-    if (lines.length === 0) { alert('沒有可升級的任務內容'); return; }
-    for (const line of lines) {
-      await addTask({
-        title: line,
-        deal_id: dealId,
-        assignee_id: deal.rm_id,
-        due_date: null,
-        priority: 'normal',
-      });
-    }
-    alert(`已建立 ${lines.length} 筆任務`);
-  }
-
-  // 把 Plan 的單一 focus 動作升級成任務(從 DealDetail 的 Plan 顯示區觸發)
-  async function promotePlanFocus(dealId: string, opts: {
-    title: string; targetDate?: string | null; sourceRef?: string;
-  }) {
-    if (IS_DEMO) { blockDemo(); return; }
-    const deal = deals.find(d => d.id === dealId);
-    if (!deal) return;
-    await addTask({
-      title: opts.title,
-      deal_id: dealId,
-      assignee_id: deal.rm_id,
-      due_date: opts.targetDate ?? null,
-      priority: 'normal',
-    });
-  }
-
-  async function advanceStage(dealId: string) {
-    if (IS_DEMO) { blockDemo(); return; }
-    const deal = deals.find(d => d.id === dealId); if (!deal) return;
-    const next = stageIdx(deal.stage) < STAGES.length - 1 ? STAGES[stageIdx(deal.stage) + 1].id : null;
-    if (!next) return;
-    await patchDeal(dealId, { stage: next });
-    await addComment(dealId, `推進:${deal.stage} → ${next}`, true);
-  }
-
-  async function createDeal(input: { name: string; rm_id: string; aum_usd: number; product: string; first_contact: string }) {
-    if (IS_DEMO) { blockDemo(); return; }
-    const tier = getTierFromAum(input.aum_usd, tierCfg);
-    const nowIso = new Date().toISOString();
-    const { data } = await supabase.from('deals').insert({
-      name: input.name.trim(), rm_id: input.rm_id, aum_usd: input.aum_usd, product: input.product,
-      first_contact: input.first_contact, stage: 'L1', tier, last_contact_at: nowIso, created_by: profile.id,
-    }).select('*, scores(*), rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role)').single();
-    if (data) {
-      setDeals(prev => [data as Deal, ...prev]);
-      setShowNewDeal(false);
-      setCurrentDealId((data as Deal).id);
-    }
-  }
-
-  async function deleteDeal(dealId: string) {
-    if (IS_DEMO) { blockDemo(); return; }
-    setDeals(prev => prev.filter(d => d.id !== dealId));
-    setCurrentDealId(null);
-    await supabase.from('deals').delete().eq('id', dealId);
-  }
-
+  // ---------- Settings(settings 表,singleton id=1)----------
   async function saveSettings(patch: Partial<Settings>) {
     if (IS_DEMO) { blockDemo(); return; }
     setSettings(s => ({ ...s, ...patch }));
     await supabase.from('settings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1);
   }
 
+  // ---------- Members(profiles 表 + auth.users 透過 RPC)----------
   async function addMember(input: { email: string; full_name: string; role: Role; team_id: string | null }) {
     if (IS_DEMO) { blockDemo(); return; }
     const email = input.email.trim().toLowerCase();
-    // 預檢:若 email 已存在,丟出友善錯誤(不要等資料庫 unique constraint 才報)
     if (profiles.some(p => p.email.toLowerCase() === email)) {
       throw new Error(`此 email (${email}) 已存在於成員清單,請改用編輯模式更新角色/團隊。`);
     }
@@ -412,7 +397,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('profiles').delete().eq('id', id);
   }
 
-  // 軟撤銷:停用 / 復原登入(admin-only RPC,後端再次把關)
+  // 軟撤銷:停用 / 復原登入(admin-only RPC,後端 SQL function 再次把關)
   async function banMember(email: string) {
     if (IS_DEMO) { blockDemo(); return; }
     const { error } = await supabase.rpc('admin_ban_user', { p_email: email });
@@ -427,7 +412,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await refetchMemberStatus();
   }
 
-  // 產生「不經 Google」的一次性登入連結(admin 用;後端再次把關 + 用 service role)
+  // 產生「不經 Google」的一次性登入連結(走 /api/admin/login-link,server 端用 service role)
   async function generateLoginLink(email: string): Promise<string> {
     if (IS_DEMO) { blockDemo(); return ''; }
     const res = await fetch('/api/admin/login-link', {
@@ -440,7 +425,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     return (j as { link: string }).link;
   }
 
-  // 團隊 CRUD(僅 admin 用)
+  // ---------- Teams(teams 表,admin only)----------
   async function addTeam(name: string) {
     if (IS_DEMO) { blockDemo(); return; }
     const trimmed = name.trim();
@@ -467,20 +452,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('teams').delete().eq('id', id);
   }
 
-  async function toggleQuestion(dealId: string, questionKey: string) {
-    if (IS_DEMO) { blockDemo(); return; }
-    const deal = deals.find(d => d.id === dealId); if (!deal) return;
-    const existing = deal.deal_questions?.find(q => q.question_key === questionKey);
-    if (existing?.answered) {
-      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, deal_questions: (d.deal_questions ?? []).filter(q => q.question_key !== questionKey) } : d));
-      await supabase.from('deal_questions').delete().eq('deal_id', dealId).eq('question_key', questionKey);
-    } else {
-      const item = { deal_id: dealId, question_key: questionKey, answered: true, note: '', asked_at: new Date().toISOString() };
-      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, deal_questions: [...(d.deal_questions ?? []), item] } : d));
-      await supabase.from('deal_questions').upsert({ deal_id: dealId, question_key: questionKey, answered: true, asked_by: profile.id });
-    }
-  }
-
+  // ---------- Pain points(pain_points 表,admin only)----------
   async function addPain(input: { pain: string; product: string; pitch: string; tiers: string }) {
     if (IS_DEMO) { blockDemo(); return; }
     const maxIdx = Math.max(0, ...painPoints.map(p => p.order_idx));
@@ -503,20 +475,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await supabase.from('pain_points').delete().eq('id', id);
   }
 
-  async function quickLogContact(dealId: string) {
-    if (IS_DEMO) { blockDemo(); return; }
-    const nowIso = new Date().toISOString();
-    await patchDeal(dealId, { last_contact_at: nowIso });
-    await addComment(dealId, `📞 已記錄本次聯繫`);
-  }
-
-  function handleExportCSV() {
-    const csv = dealsToCSV(deals, settings, tierCfg);
-    const date = new Date().toISOString().slice(0, 10);
-    downloadCSV(`worldsun-pipeline-${date}.csv`, csv);
-  }
-
-  // ===== AI 功能 =====
+  // ---------- AI 結果套用 ----------
+  // AIChatModal 回傳的建議(score、next_step、comment、questions、stage)
+  // 由 RM 勾選 + 編輯後送來這裡,逐項寫回對應的表
   async function applyAISuggestion(dealId: string, patch: {
     scores?: Partial<Scores>;
     next_step?: string | null;
@@ -553,6 +514,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     }
   }
 
+  // PlanModal 產出的 plan 整包存進 deals.plan (JSONB)
   async function savePlan(dealId: string, plan: DealPlan, targetDate: string) {
     if (IS_DEMO) { blockDemo(); return; }
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, plan, target_close_date: targetDate } : d));
@@ -564,6 +526,7 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     await addComment(dealId, `🎯 AI 產生成交路徑 (目標 ${targetDate},可行性 ${plan.feasibility})`);
   }
 
+  // 切換 plan 內某一 step 的 completed
   async function togglePlanStep(dealId: string, stepId: string) {
     if (IS_DEMO) { blockDemo(); return; }
     const deal = deals.find(d => d.id === dealId);
@@ -580,7 +543,9 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
     }).eq('id', dealId);
   }
 
-  // --- Render ---
+  // ============================================================
+  // Render — 只負責組裝,所有 UI section 都在 ./dashboard/ 下
+  // ============================================================
   return (
     <>
       {IS_DEMO && (
@@ -588,147 +553,47 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
           🔒 示範環境 · 以下資料皆為虛構範例,與真實客戶無關 · 唯讀,任何變更不會被儲存
         </div>
       )}
-      <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">沃</div>
-            <div>
-              <div className="font-semibold text-sm leading-tight">WORLDSUN MEDDIC Pipeline</div>
-              <div className="text-[10px] text-slate-400 leading-tight">沃勝聯合家族辦公室</div>
-              <div className="text-xs text-slate-500 leading-tight">
-                {profile.full_name} · {
-                  profile.role === 'admin' ? '🛡 管理員 (看全部)'
-                  : profile.role === 'team_lead'
-                    ? `👥 Team Lead (${teams.find(t => t.id === profile.team_id)?.name ?? '未分團隊'})`
-                    : `RM (${teams.find(t => t.id === profile.team_id)?.name ?? '未分團隊'})`
-                }
-              </div>
-            </div>
-          </div>
-          <div className="flex-1" />
-          <button onClick={handleExportCSV} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="匯出 CSV(可直接貼進 Google Sheets)">📥</button>
-          {!IS_DEMO && (
-            <>
-              <button onClick={() => setShowNewDeal(true)} className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
-                ＋ 新增案件
-              </button>
-              <button onClick={() => setShowNewDeal(true)} className="sm:hidden inline-flex items-center justify-center w-9 h-9 bg-indigo-600 text-white rounded-lg font-bold">＋</button>
-              <button onClick={() => router.push('/market')} className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50" title="金融資訊大腦">
-                🧠 市場大腦
-              </button>
-              <button onClick={() => router.push('/market')} className="sm:hidden inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg" title="市場大腦">🧠</button>
-              <button onClick={() => setShowSettings(true)} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="設定">⚙︎</button>
-              <button onClick={signOut} className="inline-flex items-center justify-center w-9 h-9 border border-slate-200 rounded-lg hover:bg-slate-50" title="登出">⏻</button>
-            </>
-          )}
-        </div>
-      </header>
+
+      <Header
+        profile={profile}
+        teams={teams}
+        onExportCSV={handleExportCSV}
+        onNewDeal={() => setShowNewDeal(true)}
+        onOpenMarket={() => router.push('/market')}
+        onOpenSettings={() => setShowSettings(true)}
+        onSignOut={signOut}
+      />
 
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4 pb-24">
+        <KpiTiles
+          deals={deals}
+          settings={settings}
+          tierCfg={tierCfg}
+          filterOverdue={filter.overdue}
+          filterRedFlag={filter.redFlag}
+          onToggleOverdue={() => setFilter(f => ({ ...f, overdue: !f.overdue, redFlag: false }))}
+          onToggleRedFlag={() => setFilter(f => ({ ...f, redFlag: !f.redFlag, overdue: false }))}
+        />
 
-        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <KpiTile label="Pipeline 總 AUM" value={fmtMoney(totalAum)} hint={`${activeDealsCount} 個活躍案件`} />
-          <KpiTile label="加權預測" value={fmtMoney(weightedForecast)} hint="依階段機率加權" valueClass="text-indigo-700" />
-          <KpiTile label="L4+ 高品質" value={`${l4PlusCount} 件`} hint={`佔比 ${l4PlusPct}% (健康 ≥25%)`} valueClass="text-emerald-600" />
-          <button onClick={() => setFilter(f => ({ ...f, overdue: !f.overdue, redFlag: false }))} className="text-left">
-            <KpiTile
-              label="🔔 需聯繫"
-              value={`${overdueCount} 件`}
-              hint={dueSoonCount > 0 ? `+ ${dueSoonCount} 件 3 天內到期` : '點此只看逾期'}
-              valueClass={overdueCount > 0 ? 'text-amber-600' : 'text-slate-400'}
-              highlight={filter.overdue}
-            />
-          </button>
-          <button onClick={() => setFilter(f => ({ ...f, redFlag: !f.redFlag, overdue: false }))} className="text-left">
-            <KpiTile
-              label="🚩 紅旗"
-              value={`${redFlagCount} 件`}
-              hint="EB 未確認/分低/久未更新"
-              valueClass={redFlagCount > 0 ? 'text-rose-600' : 'text-slate-400'}
-              highlight={filter.redFlag}
-            />
-          </button>
-        </section>
-
-        {/* 🎯 今日追蹤清單 — 一覽現在該處理的客戶 */}
-        <section className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-sm flex items-center gap-2">
-              🎯 今日追蹤清單
-              <span className="text-xs font-normal text-slate-400">({priorityDeals.length} 件)</span>
-            </h2>
-            <button onClick={() => setFocusCollapsed(v => !v)} className="text-xs text-slate-400 hover:text-slate-600">
-              {focusCollapsed ? '展開 ▼' : '收起 ▲'}
-            </button>
-          </div>
-          {!focusCollapsed && (
-            <>
-              {priorityDeals.length === 0 && (
-                <div className="text-center py-6 text-emerald-600 text-sm font-medium">
-                  🎉 沒有待追蹤的案件,全部健康!
-                </div>
-              )}
-              <div className="space-y-1.5">
-                {priorityDeals.map(d => {
-                  const reason = priorityReason(d, settings, tierCfg);
-                  if (!reason) return null;
-                  const toneClass = reason.tone === 'rose' ? 'text-rose-600' : reason.tone === 'orange' ? 'text-orange-600' : 'text-amber-600';
-                  return (
-                    <div key={d.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 hover:bg-slate-50">
-                      <div className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_STYLES[d.tier ?? ''] ?? 'bg-slate-200'}`}>
-                        {d.tier ?? '?'}
-                      </div>
-                      <div className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded stage-${d.stage}`}>
-                        {d.stage}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-sm truncate">{d.name}</span>
-                          <span className="text-xs text-slate-400">{d.rm?.full_name ?? '—'}</span>
-                          <span className="text-xs text-slate-400">· {fmtMoney(Number(d.aum_usd))}</span>
-                        </div>
-                        <div className={`text-xs ${toneClass} font-medium`}>{reason.icon} {reason.text}</div>
-                        {d.next_step && (
-                          <div className="text-[11px] text-slate-500 mt-0.5 truncate">👉 {d.next_step}</div>
-                        )}
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button
-                          onClick={() => quickLogContact(d.id)}
-                          title="標記剛聯繫過,重新計算週期"
-                          className="text-[11px] px-2 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 whitespace-nowrap"
-                        >📞 剛聯繫</button>
-                        <button
-                          onClick={() => setCurrentDealId(d.id)}
-                          className="text-[11px] px-2 py-1 border border-slate-200 rounded hover:bg-white whitespace-nowrap"
-                        >詳情</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {priorityDeals.length > 0 && (
-                <div className="mt-2 text-[11px] text-slate-400">
-                  優先度規則:紅旗 &gt; 逾期聯繫 &gt; L4+ 卡關 &gt; 即將到期;以 tier 加權
-                </div>
-              )}
-            </>
-          )}
-        </section>
+        <FocusList
+          deals={deals}
+          settings={settings}
+          tierCfg={tierCfg}
+          collapsed={focusCollapsed}
+          onToggleCollapsed={() => setFocusCollapsed(v => !v)}
+          onOpenDeal={(id) => setCurrentDealId(id)}
+          onQuickLogContact={quickLogContact}
+        />
 
         {/* Tab 切換:銷售漏斗 / 任務管理 */}
         <div className="flex gap-1 border-b border-slate-200">
           <button
             onClick={() => setActiveTab('pipeline')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
-              activeTab === 'pipeline' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${activeTab === 'pipeline' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >📊 銷售漏斗</button>
           <button
             onClick={() => setActiveTab('tasks')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
-              activeTab === 'tasks' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${activeTab === 'tasks' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             📋 任務管理
             {tasks.filter(t => t.status !== 'done').length > 0 && (
@@ -751,143 +616,34 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
             onDeleteTask={deleteTask}
           />
         ) : (
-        <>
-        <section className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-sm">漏斗階段分佈</h2>
-            <div className="flex items-center gap-3">
-              {filter.stage && (
-                <button
-                  onClick={() => setFilter(f => ({ ...f, stage: '' }))}
-                  className="text-xs text-indigo-600 hover:underline"
-                >清除階段篩選</button>
-              )}
-              <button onClick={() => setFunnelCollapsed(v => !v)} className="text-xs text-slate-400 hover:text-slate-600">
-                {funnelCollapsed ? '展開 ▼' : '收起 ▲'}
-              </button>
-            </div>
-          </div>
-          {!funnelCollapsed && (
-            <>
-          <div className="space-y-2">
-            {STAGES.map(stage => (
-              <button key={stage.id} onClick={() => setFilter(f => ({ ...f, stage: f.stage === stage.id ? '' : stage.id }))}
-                className={`w-full flex items-center gap-3 p-2 rounded-lg transition ${filter.stage === stage.id ? 'ring-2 ring-indigo-400 bg-indigo-50' : 'hover:bg-slate-50'}`}>
-                <div className="w-10 text-xs font-bold text-right">{stage.id}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="text-xs text-slate-600 truncate">{stage.name}</div>
-                    <div className="text-xs text-slate-400">推進率目標 {stage.targetConv}</div>
-                  </div>
-                  <div className="h-6 rounded-md relative overflow-hidden border border-slate-200 bg-slate-50">
-                    <div className={`h-full stage-${stage.id} transition-all duration-500 flex items-center px-2`} style={{ width: `${Math.max(stageBarPct(stage.id), 4)}%` }}>
-                      <span className="text-xs font-semibold whitespace-nowrap">{stageCount(stage.id)} 件</span>
-                    </div>
-                    <div className="absolute right-2 top-0 h-full flex items-center">
-                      <span className="text-xs font-medium text-slate-600">{fmtMoney(stageAum(stage.id))}</span>
-                    </div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-          <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500">
-            總案件 <span className="font-semibold text-slate-700">{deals.length}</span> · L4+ 佔比 {l4PlusPct}% (建議 ≥25%) · Pipeline 覆蓋率建議 ≥ 3× 月目標
-          </div>
-            </>
-          )}
-        </section>
+          <>
+            <Funnel
+              deals={deals}
+              filterStage={filter.stage}
+              collapsed={funnelCollapsed}
+              onToggleCollapsed={() => setFunnelCollapsed(v => !v)}
+              onSetStageFilter={(stage) => setFilter(f => ({ ...f, stage }))}
+            />
 
-        <section className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap gap-2 items-center">
-          <select value={filter.rm} onChange={e => setFilter(f => ({ ...f, rm: e.target.value }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
-            <option value="">所有 RM</option>
-            {profiles.filter(p => !filter.team || p.team_id === filter.team).map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
-          </select>
-          {teams.length > 0 && (
-            <select value={filter.team} onChange={e => { const team = e.target.value; setFilter(f => ({ ...f, team, rm: team && f.rm && profiles.find(p => p.id === f.rm)?.team_id !== team ? '' : f.rm })); }} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
-              <option value="">所有團隊</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          )}
-          <select value={filter.tier} onChange={e => setFilter(f => ({ ...f, tier: e.target.value as Tier | '' }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
-            <option value="">所有等級</option>
-            {tierCfg.map(t => <option key={t.key} value={t.key}>{t.key} {t.name}</option>)}
-          </select>
-          <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
-            <input type="checkbox" checked={filter.overdue} onChange={e => setFilter(f => ({ ...f, overdue: e.target.checked }))} className="accent-amber-600" />
-            <span>🔔 逾期聯繫</span>
-          </label>
-          <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
-            <input type="checkbox" checked={filter.redFlag} onChange={e => setFilter(f => ({ ...f, redFlag: e.target.checked }))} className="accent-rose-600" />
-            <span>🚩 紅旗</span>
-          </label>
-          <input type="search" value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} placeholder="搜尋客戶/商品/下一步..." className="flex-1 min-w-[140px] px-3 py-1.5 text-sm border border-slate-200 rounded-lg" />
-          <select value={filter.sort} onChange={e => setFilter(f => ({ ...f, sort: e.target.value as 'updated' | 'aum' | 'score' | 'stage' }))} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white">
-            <option value="updated">排序:最近更新</option>
-            <option value="aum">排序:AUM 大到小</option>
-            <option value="score">排序:總分高到低</option>
-            <option value="stage">排序:階段高到低</option>
-          </select>
-        </section>
+            <FilterBar
+              filter={filter}
+              setFilter={setFilter}
+              profiles={profiles}
+              teams={teams}
+              tierCfg={tierCfg}
+            />
 
-        <section className="space-y-2">
-          {filteredDeals.length === 0 && <div className="text-center py-10 text-slate-400 text-sm">沒有符合條件的案件</div>}
-          {filteredDeals.map(d => (
-            <button key={d.id} onClick={() => setCurrentDealId(d.id)} className="w-full text-left bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition p-3 sm:p-4">
-              <div className="flex items-start gap-3">
-                <div className="shrink-0 flex flex-col gap-1">
-                  <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-lg flex flex-col items-center justify-center font-bold text-xs stage-${d.stage}`}>
-                    <div>{d.stage}</div>
-                    <div className="text-[10px] font-normal opacity-80">{settings.stage_probs[d.stage]}%</div>
-                  </div>
-                  {d.tier && (
-                    <div className={`text-[10px] font-bold text-center rounded px-1 py-0.5 ${TIER_STYLES[d.tier] ?? 'bg-slate-200'}`}>
-                      {d.tier}
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-sm sm:text-base flex items-center gap-2 flex-wrap">
-                        <span>{d.name}</span>
-                        <span className="text-xs text-slate-400 font-normal">RM {d.rm?.full_name || '—'}</span>
-                        {(() => {
-                          const ci = contactOverdue(d, tierCfg);
-                          if (!ci) return null;
-                          if (ci.status === 'overdue') return <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">🔔 逾期 {ci.deltaDays} 天未聯繫</span>;
-                          if (ci.status === 'due_soon') return <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100">🔔 {Math.abs(ci.deltaDays)} 天內需聯繫</span>;
-                          return null;
-                        })()}
-                        {redFlag(d, settings) && <span className="text-xs px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">🚩 {redFlag(d, settings)}</span>}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">{d.product}</div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm sm:text-base font-semibold">{fmtMoney(Number(d.aum_usd))}</div>
-                      <div className="text-xs text-slate-500">{totalScore(d)}/80 分</div>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-indigo-500" style={{ width: `${totalScore(d) / 80 * 100}%` }} />
-                    </div>
-                    <span>{daysSince(d.last_updated)} 天前更新</span>
-                  </div>
-                  {d.next_step && (
-                    <div className="mt-2 text-xs bg-amber-50 text-amber-900 px-2 py-1 rounded border border-amber-100">
-                      <span className="font-semibold">下一步:</span> {d.next_step}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </button>
-          ))}
-        </section>
-        </>
+            <DealList
+              deals={filteredDeals}
+              settings={settings}
+              tierCfg={tierCfg}
+              onOpenDeal={(id) => setCurrentDealId(id)}
+            />
+          </>
         )}
       </main>
 
+      {/* 三個 Modal 與一個 toast */}
       {currentDeal && (
         <DealDetail
           deal={currentDeal}
@@ -957,15 +713,5 @@ export function Dashboard({ initialDeals, profile, allProfiles, initialPainPoint
         </div>
       )}
     </>
-  );
-}
-
-function KpiTile({ label, value, hint, valueClass, highlight }: { label: string; value: string; hint: string; valueClass?: string; highlight?: boolean }) {
-  return (
-    <div className={`bg-white rounded-xl border p-4 transition ${highlight ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200'}`}>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 text-xl sm:text-2xl font-bold ${valueClass ?? ''}`}>{value}</div>
-      <div className="text-xs text-slate-400 mt-1">{hint}</div>
-    </div>
   );
 }
