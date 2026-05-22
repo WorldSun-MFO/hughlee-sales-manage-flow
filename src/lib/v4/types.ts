@@ -30,6 +30,66 @@ export interface Comment {
   created_at: string;
 }
 
+export type ScoreField = 'm' | 'e' | 'd1' | 'd2' | 'p' | 'i' | 'c1' | 'c2';
+
+export interface ScoreNote {
+  deal_id: string;
+  field: ScoreField;
+  note: string;
+  updated_at?: string;
+}
+
+export interface ChecklistItem {
+  deal_id: string;
+  stage: StageId;
+  item_key: string;
+  done: boolean;
+  done_at?: string | null;
+}
+
+export interface DealQuestion {
+  deal_id: string;
+  question_key: string;
+  answered: boolean;
+  note: string;
+  asked_at?: string;
+}
+
+export interface DealAttachment {
+  id: string;
+  deal_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string | null;
+  comment_id?: string | null;
+  created_at: string;
+}
+
+export interface DealPlanStep {
+  id: string;
+  title: string;
+  target_date: string;
+  stage_transition: string;
+  focus: string[];
+  talking_points: string[];
+  risks: string[];
+  completed?: boolean;
+  completed_at?: string | null;
+}
+
+export interface DealPlan {
+  target_date: string;
+  generated_at: string;
+  model: string;
+  overview: string;
+  feasibility: 'high' | 'medium' | 'low';
+  feasibility_reason: string;
+  top_risks: string[];
+  steps: DealPlanStep[];
+}
+
 export interface Deal {
   id: string;
   name: string;
@@ -44,7 +104,12 @@ export interface Deal {
   next_step: string | null;
   target_close_date: string | null;
   created_at: string;
+  plan?: DealPlan | null;
   scores?: Scores;
+  score_notes?: ScoreNote[];
+  stage_checklist?: ChecklistItem[];
+  deal_questions?: DealQuestion[];
+  deal_attachments?: DealAttachment[];
   comments?: Comment[];
   rm?: Profile | null;
 }

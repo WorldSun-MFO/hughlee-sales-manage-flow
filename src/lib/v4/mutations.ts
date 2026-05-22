@@ -10,7 +10,7 @@
 // ============================================================
 'use client';
 import { createClient } from '@/lib/supabase/client';
-import type { StageId, Tier } from '@/lib/v4/types';
+import type { ScoreField, StageId, Tier } from '@/lib/v4/types';
 
 // ---------- Deal 欄位編輯 ----------
 type DealPatch = Partial<{
@@ -76,6 +76,44 @@ export async function patchScores(dealId: string, patch: ScorePatch): Promise<vo
     .upsert({ deal_id: dealId, ...patch }, { onConflict: 'deal_id' });
   if (error) throw error;
   await supabase.from('deals').update({ last_updated: new Date().toISOString() }).eq('id', dealId);
+}
+
+// ---------- 單一 MEDDIC 欄位的文字理由(score_notes 子表)----------
+export async function setScoreNote(dealId: string, field: ScoreField, note: string): Promise<void> {
+  const supabase = createClient();
+  // 複合主鍵 (deal_id, field),upsert 避免衝突
+  const { error } = await supabase
+    .from('score_notes')
+    .upsert({ deal_id: dealId, field, note }, { onConflict: 'deal_id,field' });
+  if (error) throw error;
+}
+
+// ---------- stage_checklist:勾掉 / 取消勾選 ----------
+export async function toggleChecklistItem(
+  dealId: string, stage: StageId, itemKey: string, done: boolean,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('stage_checklist')
+    .upsert({
+      deal_id: dealId, stage, item_key: itemKey,
+      done, done_at: done ? new Date().toISOString() : null,
+    }, { onConflict: 'deal_id,stage,item_key' });
+  if (error) throw error;
+}
+
+// ---------- deal_questions:勾答案 + 補註 ----------
+export async function setDealQuestion(
+  dealId: string, questionKey: string, answered: boolean, note = '',
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('deal_questions')
+    .upsert({
+      deal_id: dealId, question_key: questionKey, answered, note,
+      asked_at: new Date().toISOString(),
+    }, { onConflict: 'deal_id,question_key' });
+  if (error) throw error;
 }
 
 // ---------- Tasks ----------

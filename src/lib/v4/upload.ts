@@ -68,6 +68,17 @@ export async function removeDealAttachment(att: Pick<UploadedAttachment, 'id' | 
   await supabase.storage.from('deal-attachments').remove([att.storage_path]).catch(() => undefined);
 }
 
+/**
+ * 取附檔的 signed URL(1 小時內可下載 / 預覽)
+ * @param storagePath - 來自 deal_attachments.storage_path
+ */
+export async function getAttachmentSignedUrl(storagePath: string): Promise<string> {
+  const supabase = createClient();
+  const { data, error } = await supabase.storage.from('deal-attachments').createSignedUrl(storagePath, 3600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 export function attachmentIcon(mimeType: string): string {
   if (mimeType.startsWith('image/')) return '🖼';
   if (mimeType.includes('pdf')) return '📄';

@@ -8,8 +8,8 @@
 // 不是 staging — 一上傳就進 deal_attachments,客戶詳情頁立刻看得到。
 // ============================================================
 import { useState } from 'react';
-import { Paperclip, Loader2, X } from 'lucide-react';
-import { attachmentIcon, removeDealAttachment, uploadDealAttachment, type UploadedAttachment } from '@/lib/v4/upload';
+import { Paperclip, Loader2, X, Download } from 'lucide-react';
+import { attachmentIcon, getAttachmentSignedUrl, removeDealAttachment, uploadDealAttachment, type UploadedAttachment } from '@/lib/v4/upload';
 import { cn } from '@/lib/v4/utils';
 
 export function AttachmentTray({
@@ -80,21 +80,7 @@ export function AttachmentTray({
       {attachments.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
           {attachments.map((a) => (
-            <li
-              key={a.id}
-              className="group inline-flex items-center gap-1.5 rounded-md border border-forest/25 bg-forest/8 px-2 py-1 text-xs text-forest"
-            >
-              <span aria-hidden>{attachmentIcon(a.mime_type)}</span>
-              <span className="max-w-[180px] truncate">{a.file_name}</span>
-              <button
-                type="button"
-                onClick={() => handleRemove(a)}
-                className="grid h-4 w-4 place-items-center rounded-sm text-forest/55 transition hover:bg-forest/15 hover:text-forest"
-                aria-label={`移除 ${a.file_name}`}
-              >
-                <X className="h-3 w-3" strokeWidth={2.5} />
-              </button>
-            </li>
+            <AttachmentChip key={a.id} att={a} onRemove={() => handleRemove(a)} />
           ))}
         </ul>
       )}
@@ -103,5 +89,56 @@ export function AttachmentTray({
         <div className="rounded-md border border-claret/30 bg-claret/5 px-3 py-2 text-xs text-claret">{error}</div>
       )}
     </div>
+  );
+}
+
+// ============================================================
+// 附檔 chip — 點檔名下載 / 預覽,X 移除
+// ============================================================
+export function AttachmentChip({
+  att, onRemove,
+}: {
+  att: UploadedAttachment;
+  onRemove?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function open() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const url = await getAttachmentSignedUrl(att.storage_path);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      alert(`無法開啟:${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <li className="group inline-flex items-center gap-1.5 rounded-md border border-forest/25 bg-forest/8 px-2 py-1 text-xs text-forest">
+      <span aria-hidden>{attachmentIcon(att.mime_type)}</span>
+      <button
+        type="button"
+        onClick={open}
+        disabled={busy}
+        title="點開或下載"
+        className="inline-flex items-center gap-1 max-w-[200px] truncate font-semibold hover:underline disabled:cursor-wait"
+      >
+        <span className="truncate">{att.file_name}</span>
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> : <Download className="h-3 w-3 opacity-60" strokeWidth={2} />}
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="grid h-4 w-4 place-items-center rounded-sm text-forest/55 transition hover:bg-forest/15 hover:text-forest"
+          aria-label={`移除 ${att.file_name}`}
+        >
+          <X className="h-3 w-3" strokeWidth={2.5} />
+        </button>
+      )}
+    </li>
   );
 }

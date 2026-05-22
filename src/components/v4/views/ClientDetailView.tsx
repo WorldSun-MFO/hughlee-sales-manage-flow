@@ -16,14 +16,16 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, Loader2, Phone, Send, Sparkles, TrendingUp, ListTodo as ListTodoIcon } from 'lucide-react';
-import type { Scores, Snapshot, StageId, Tier } from '@/lib/v4/types';
+import type { ScoreField, Scores, Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { cn, contactOverdue, daysSince, fmtMoney, redFlag, totalScore, TIER_STYLES } from '@/lib/v4/utils';
 import { Drawer } from '@/components/v4/Drawer';
 import { DealAIPanel } from '@/components/v4/DealAIPanel';
 import { DealPlanPanel } from '@/components/v4/DealPlanPanel';
-import { addComment, createTask, markContacted, patchDeal, patchScores, splitNextStepIntoTasks } from '@/lib/v4/mutations';
+import { addComment, createTask, markContacted, patchDeal, patchScores, setScoreNote, splitNextStepIntoTasks } from '@/lib/v4/mutations';
 import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
+import { AttachmentChip } from '@/components/v4/AttachmentTray';
+import { Paperclip } from 'lucide-react';
 import { InlineText, InlineTextarea, InlineSelect, InlineDate, InlineScore } from '@/components/v4/InlineEdit';
 
 const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
@@ -248,26 +250,36 @@ export function ClientDetailView({
       <section className="grid gap-3">
         <div className="flex items-baseline justify-between">
           <div className="label-caps text-ink/55">MEDDIC 評分</div>
-          <div className="font-v4-mono text-[10.5px] text-ink/45">點分數即可修改 · 0–10 整數</div>
+          <div className="font-v4-mono text-[10.5px] text-ink/45">點分數改 0–10 · 點「+ 加備註」寫理由</div>
         </div>
-        <div className="grid gap-2 rounded-md border border-ink/10 bg-paper p-5 sm:grid-cols-2">
+        <div className="grid gap-2 rounded-md border border-ink/10 bg-paper p-5">
           {MEDDIC_LABELS.map(([k, key, label]) => {
             const v = deal.scores?.[k] ?? 0;
             const tone = v >= 8 ? 'bg-forest' : v >= 5 ? 'bg-brass' : v >= 3 ? 'bg-ink/40' : 'bg-claret/70';
+            const noteRow = deal.score_notes?.find((sn) => sn.field === k);
             return (
-              <div key={k} className="grid grid-cols-[40px_1fr_90px] items-center gap-3 rounded-sm border border-ink/8 px-3 py-2">
-                <span className="font-v4-mono text-sm font-bold text-ink">{key}</span>
-                <span className="text-xs text-ink/65">{label}</span>
-                <div className="flex items-center justify-end gap-2">
-                  <div className="h-1.5 w-14 overflow-hidden rounded-full bg-ink/8">
-                    <div className={cn('h-full', tone)} style={{ width: `${v * 10}%` }} />
+              <div key={k} className="grid gap-1 rounded-sm border border-ink/8 px-3 py-2">
+                <div className="grid grid-cols-[40px_1fr_90px] items-center gap-3">
+                  <span className="font-v4-mono text-sm font-bold text-ink">{key}</span>
+                  <span className="text-xs text-ink/65">{label}</span>
+                  <div className="flex items-center justify-end gap-2">
+                    <div className="h-1.5 w-14 overflow-hidden rounded-full bg-ink/8">
+                      <div className={cn('h-full', tone)} style={{ width: `${v * 10}%` }} />
+                    </div>
+                    <InlineScore
+                      value={v}
+                      onSave={async (next) => { await patchScores(deal.id, { [k]: next } as Partial<Scores>); startTransition(() => router.refresh()); }}
+                      isFixtures={isFixtures}
+                    />
                   </div>
-                  <InlineScore
-                    value={v}
-                    onSave={async (next) => { await patchScores(deal.id, { [k]: next } as Partial<Scores>); startTransition(() => router.refresh()); }}
-                    isFixtures={isFixtures}
-                  />
                 </div>
+                <ScoreNoteEditor
+                  dealId={deal.id}
+                  field={k as ScoreField}
+                  initialNote={noteRow?.note ?? ''}
+                  isFixtures={isFixtures}
+                  onSaved={() => startTransition(() => router.refresh())}
+                />
               </div>
             );
           })}
@@ -338,6 +350,21 @@ export function ClientDetailView({
         )}
       </section>
 
+      {(deal.deal_attachments?.length ?? 0) > 0 && (
+        <section className="grid gap-3">
+          <div className="label-caps text-ink/55 inline-flex items-center gap-2">
+            <Paperclip className="h-3 w-3" strokeWidth={2} />
+            附檔 · {deal.deal_attachments!.length}
+          </div>
+          <ul className="flex flex-wrap gap-1.5">
+            {deal.deal_attachments!.map((a) => (
+              <AttachmentChip key={a.id} att={a} />
+            ))}
+          </ul>
+          <div className="font-v4-mono text-[10.5px] text-ink/45">點檔名下載 / 預覽(signed URL,1 小時有效)</div>
+        </section>
+      )}
+
       <section className="grid gap-3">
         <div className="flex items-baseline justify-between">
           <div className="label-caps text-ink/55">任務 · {tasks.length}</div>
@@ -384,6 +411,76 @@ export function ClientDetailView({
         {drawer === 'ai' && <DealAIPanel deal={deal} isFixtures={isFixtures} />}
         {drawer === 'plan' && <DealPlanPanel deal={deal} isFixtures={isFixtures} />}
       </Drawer>
+    </div>
+  );
+}
+
+function ScoreNoteEditor({
+  dealId, field, initialNote, isFixtures, onSaved,
+}: {
+  dealId: string;
+  field: ScoreField;
+  initialNote: string;
+  isFixtures: boolean;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initialNote);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    if (draft.trim() === initialNote.trim()) { setEditing(false); return; }
+    if (isFixtures) { setErr('fixtures 模式無法寫入'); return; }
+    setBusy(true); setErr(null);
+    try { await setScoreNote(dealId, field, draft.trim()); setEditing(false); onSaved(); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => !isFixtures && setEditing(true)}
+        disabled={isFixtures}
+        className={cn(
+          'group grid gap-1 text-left',
+          !isFixtures && 'hover:bg-cream/40 rounded-sm -mx-1 px-1 py-0.5',
+          isFixtures && 'cursor-not-allowed',
+        )}
+      >
+        {initialNote ? (
+          <span className="text-[12px] leading-5 text-ink/65 whitespace-pre-wrap">{initialNote}</span>
+        ) : (
+          !isFixtures && <span className="font-v4-mono text-[10px] font-semibold text-ink/35 opacity-0 transition group-hover:opacity-100">+ 加備註</span>
+        )}
+      </button>
+    );
+  }
+  return (
+    <div className="grid gap-1">
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+          if (e.key === 'Escape') { setDraft(initialNote); setEditing(false); }
+        }}
+        rows={2}
+        autoFocus
+        disabled={busy}
+        placeholder="這個分數的根據(看到什麼證據、客戶說了什麼...)"
+        className="w-full resize-vertical rounded-sm border border-ink/25 bg-cream/40 px-2 py-1 text-xs leading-5 text-ink focus:border-ink/45 focus:outline-none"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={() => { setDraft(initialNote); setEditing(false); }} disabled={busy} className="text-[11px] text-ink/55 hover:text-ink">取消</button>
+        <button type="button" onClick={save} disabled={busy} className="inline-flex items-center gap-1 rounded-sm bg-ink px-2 py-0.5 text-[11px] font-semibold text-paper hover:bg-graphite disabled:bg-ink/30">
+          {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2} /> : null}
+          儲存
+        </button>
+      </div>
+      {err && <div className="text-[10px] text-claret">{err}</div>}
     </div>
   );
 }
