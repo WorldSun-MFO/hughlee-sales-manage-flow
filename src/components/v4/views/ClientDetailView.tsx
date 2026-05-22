@@ -1,8 +1,26 @@
+'use client';
+
+// ============================================================
+// 客戶詳情頁 — v4
+// ============================================================
+// 變動(Phase 2.3):
+//   - 從 server component → client component(因為要 state 控 Drawer)
+//   - 底部三顆按鈕從裝飾變功能:
+//     · 剛聯繫:Phase 2.4 再做(會打 last_contact_at)
+//     · AI 助手:右側 slide-in Drawer 跑 /api/ai/parse-interaction
+//     · 推進階段:右側 slide-in Drawer 跑 /api/ai/generate-plan
+//   - Drawer 內共用 DealAIPanel / DealPlanPanel(不重抓 deal list,
+//     因為 deal 已知)
+// ============================================================
+import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, MessageCircle, Phone, Sparkles, Target, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Calendar, Phone, Sparkles, TrendingUp } from 'lucide-react';
 import type { Scores, Snapshot } from '@/lib/v4/types';
 import { STAGE_PROB } from '@/lib/v4/constants';
 import { cn, contactOverdue, daysSince, fmtMoney, redFlag, totalScore, TIER_STYLES } from '@/lib/v4/utils';
+import { Drawer } from '@/components/v4/Drawer';
+import { DealAIPanel } from '@/components/v4/DealAIPanel';
+import { DealPlanPanel } from '@/components/v4/DealPlanPanel';
 
 const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
   ['m', 'M', 'Metrics'],
@@ -15,6 +33,8 @@ const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
   ['c2', 'C₂', 'Competition'],
 ];
 
+type DrawerKind = 'ai' | 'plan' | null;
+
 export function ClientDetailView({
   snapshot, dealId, base, backHref,
 }: {
@@ -23,14 +43,16 @@ export function ClientDetailView({
   base: '/v4/workspace' | '/v4/hub';
   backHref: string;
 }) {
+  void base;
+  const [drawer, setDrawer] = useState<DrawerKind>(null);
   const deal = snapshot.deals.find((d) => d.id === dealId);
   if (!deal) {
     return (
       <div className="grid place-items-center px-8 py-20">
         <div className="grid gap-3 text-center">
           <div className="font-v4-serif text-3xl text-ink">找不到此客戶</div>
-          <Link href={`${base}/clients`} className="inline-flex items-center gap-1.5 font-v4-mono text-xs font-semibold text-ink/55 hover:text-ink">
-            <ArrowLeft className="h-3 w-3" /> 返回客戶名冊
+          <Link href={backHref} className="inline-flex items-center gap-1.5 font-v4-mono text-xs font-semibold text-ink/55 hover:text-ink">
+            <ArrowLeft className="h-3 w-3" /> 返回
           </Link>
         </div>
       </div>
@@ -41,6 +63,7 @@ export function ClientDetailView({
   const score = totalScore(deal);
   const rf = redFlag(deal);
   const ci = contactOverdue(deal, snapshot.tierConfig);
+  const isFixtures = snapshot.source === 'fixtures';
 
   return (
     <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
@@ -161,22 +184,14 @@ export function ClientDetailView({
                   <div className="font-semibold text-ink">{t.title}</div>
                   <div className="font-v4-mono text-[11px] text-ink/45 numeric">due {t.due_date ?? '—'}</div>
                 </div>
-                <span
-                  className={cn(
-                    'rounded-sm border px-1.5 py-0.5 text-center font-v4-mono text-[10px] font-bold',
-                    t.priority === 'high' ? 'border-claret/30 bg-claret/8 text-claret' : 'border-ink/15 text-ink/65',
-                  )}
-                >
+                <span className={cn('rounded-sm border px-1.5 py-0.5 text-center font-v4-mono text-[10px] font-bold',
+                  t.priority === 'high' ? 'border-claret/30 bg-claret/8 text-claret' : 'border-ink/15 text-ink/65')}>
                   {t.priority}
                 </span>
-                <span
-                  className={cn(
-                    'rounded-sm border px-1.5 py-0.5 text-center font-v4-mono text-[10px] font-bold',
-                    t.status === 'done' ? 'border-forest/30 bg-forest/8 text-forest'
-                      : t.status === 'doing' ? 'border-cobalt/30 bg-cobalt/8 text-cobalt'
-                        : 'border-ink/15 text-ink/65',
-                  )}
-                >
+                <span className={cn('rounded-sm border px-1.5 py-0.5 text-center font-v4-mono text-[10px] font-bold',
+                  t.status === 'done' ? 'border-forest/30 bg-forest/8 text-forest'
+                    : t.status === 'doing' ? 'border-cobalt/30 bg-cobalt/8 text-cobalt'
+                      : 'border-ink/15 text-ink/65')}>
                   {t.status}
                 </span>
               </li>
@@ -185,11 +200,27 @@ export function ClientDetailView({
         </section>
       ) : null}
 
+      {/* 底部固定 action bar */}
       <section className="sticky bottom-0 -mx-8 grid grid-cols-3 gap-2 border-t border-ink/10 bg-cream/95 px-8 py-4 backdrop-blur lg:-mx-14 lg:px-14">
-        <Action icon={Phone} tone="paper">剛聯繫</Action>
-        <Action icon={Sparkles} tone="cobalt">AI 助手</Action>
-        <Action icon={TrendingUp} tone="forest">推進階段</Action>
+        <Action icon={Phone} tone="paper" disabled title="Phase 2.4 會做">剛聯繫</Action>
+        <Action icon={Sparkles} tone="cobalt" onClick={() => setDrawer('ai')}>AI 助手</Action>
+        <Action icon={TrendingUp} tone="forest" onClick={() => setDrawer('plan')}>推進階段</Action>
       </section>
+
+      {/* Drawer 容器 — 只有一個,內容依 drawer kind 切換 */}
+      <Drawer
+        open={drawer !== null}
+        onClose={() => setDrawer(null)}
+        title={
+          <span className="inline-flex items-center gap-2">
+            {drawer === 'ai' ? <Sparkles className="h-4 w-4 text-cobalt" strokeWidth={1.75} /> : <TrendingUp className="h-4 w-4 text-forest" strokeWidth={1.75} />}
+            {drawer === 'ai' ? 'AI 助手' : '推進階段 · 成交規劃'}
+          </span>
+        }
+      >
+        {drawer === 'ai' && <DealAIPanel deal={deal} isFixtures={isFixtures} />}
+        {drawer === 'plan' && <DealPlanPanel deal={deal} isFixtures={isFixtures} />}
+      </Drawer>
     </div>
   );
 }
@@ -203,12 +234,31 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Action({ icon: Icon, tone, children }: { icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; tone: 'paper' | 'forest' | 'cobalt'; children: React.ReactNode }) {
+function Action({
+  icon: Icon, tone, children, onClick, disabled, title,
+}: {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  tone: 'paper' | 'forest' | 'cobalt';
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
+}) {
   const cls = tone === 'forest' ? 'bg-forest text-paper border-forest hover:brightness-110'
     : tone === 'cobalt' ? 'bg-cobalt text-paper border-cobalt hover:brightness-110'
       : 'border-ink/15 bg-paper text-ink hover:border-ink/30';
   return (
-    <button type="button" className={cn('inline-flex h-11 items-center justify-center gap-2 rounded-md border text-sm font-semibold transition', cls)}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={cn(
+        'inline-flex h-11 items-center justify-center gap-2 rounded-md border text-sm font-semibold transition',
+        cls,
+        disabled && 'opacity-50 cursor-not-allowed hover:brightness-100',
+      )}
+    >
       <Icon className="h-4 w-4" strokeWidth={1.75} />
       {children}
     </button>
