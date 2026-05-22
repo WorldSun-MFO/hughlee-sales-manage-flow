@@ -5,22 +5,51 @@ import Link from 'next/link';
 import { ArrowUpRight, Search } from 'lucide-react';
 import type { Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
-import { cn, fmtMoney, priorityReason, totalScore, TIER_STYLES } from '@/lib/v4/utils';
+import { cn, daysSince, fmtMoney, priorityReason, totalScore, TIER_STYLES } from '@/lib/v4/utils';
+
+type SortKey = 'aum_desc' | 'aum_asc' | 'updated_desc' | 'updated_asc' | 'score_desc' | 'score_asc';
 
 export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
   const [stage, setStage] = useState<StageId | ''>('');
   const [tier, setTier] = useState<Tier | ''>('');
+  const [rmId, setRmId] = useState<string>('');
+  const [teamId, setTeamId] = useState<string>('');
   const [q, setQ] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('aum_desc');
+
+  // 只列出實際出現在 deals 裡的 RM(避免一堆從沒帶案件的 profile 塞滿下拉)
+  const activeRMs = useMemo(() => {
+    const ids = new Set(snapshot.deals.map((d) => d.rm_id));
+    return snapshot.profiles.filter((p) => ids.has(p.id));
+  }, [snapshot.deals, snapshot.profiles]);
 
   const filteredDeals = useMemo(() => {
     const query = q.toLowerCase().trim();
-    return snapshot.deals.filter((d) => {
+    let list = snapshot.deals.filter((d) => {
       if (stage && d.stage !== stage) return false;
       if (tier && d.tier !== tier) return false;
+      if (rmId && d.rm_id !== rmId) return false;
+      if (teamId) {
+        const rm = snapshot.profiles.find((p) => p.id === d.rm_id);
+        if (rm?.team_id !== teamId) return false;
+      }
       if (query && !`${d.name} ${d.product ?? ''} ${d.next_step ?? ''}`.toLowerCase().includes(query)) return false;
       return true;
     });
-  }, [snapshot.deals, stage, tier, q]);
+    list = list.slice().sort((a, b) => {
+      switch (sortKey) {
+        case 'aum_desc': return Number(b.aum_usd) - Number(a.aum_usd);
+        case 'aum_asc':  return Number(a.aum_usd) - Number(b.aum_usd);
+        case 'updated_desc': return daysSince(a.last_updated) - daysSince(b.last_updated);
+        case 'updated_asc':  return daysSince(b.last_updated) - daysSince(a.last_updated);
+        case 'score_desc': return totalScore(b) - totalScore(a);
+        case 'score_asc':  return totalScore(a) - totalScore(b);
+      }
+    });
+    return list;
+  }, [snapshot.deals, snapshot.profiles, stage, tier, rmId, teamId, q, sortKey]);
+
+  const hasFilter = stage || tier || rmId || teamId || q;
 
   const stageCount = (s: StageId) => snapshot.deals.filter((d) => d.stage === s).length;
   const stageAum = (s: StageId) => snapshot.deals.filter((d) => d.stage === s).reduce((sum, d) => sum + Number(d.aum_usd), 0);
@@ -84,9 +113,9 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
             <div className="label-caps text-ink/55">All deals · {filteredDeals.length} / {snapshot.deals.length}</div>
             <h2 className="mt-1 font-v4-serif text-2xl font-medium text-ink">案件清單</h2>
           </div>
-          {(stage || tier || q) ? (
+          {hasFilter ? (
             <button
-              onClick={() => { setStage(''); setTier(''); setQ(''); }}
+              onClick={() => { setStage(''); setTier(''); setRmId(''); setTeamId(''); setQ(''); }}
               className="font-v4-mono text-xs font-semibold text-ink/55 transition hover:text-ink"
             >
               清除篩選 ✕
@@ -100,20 +129,33 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="搜尋客戶、商品、下一步"
+              placeholder="搜尋客戶 / 商品 / 下一步"
               className="w-56 bg-transparent text-sm text-ink outline-none placeholder:text-ink/35"
             />
           </div>
-          <select
-            value={tier}
-            onChange={(e) => setTier(e.target.value as Tier | '')}
-            className="h-9 rounded-md border border-ink/15 bg-paper px-3 text-sm font-semibold text-ink outline-none"
-          >
-            <option value="">全部等級</option>
-            {(['SSS', 'S', 'A', 'B', 'C'] as Tier[]).map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+          <FilterSelect value={tier} onChange={(v) => setTier(v as Tier | '')}>
+            <option value="">全部 Tier</option>
+            {(['SSS', 'S', 'A', 'B', 'C'] as Tier[]).map((t) => (<option key={t} value={t}>{t}</option>))}
+          </FilterSelect>
+          <FilterSelect value={rmId} onChange={setRmId}>
+            <option value="">全部 RM</option>
+            {activeRMs.map((p) => (<option key={p.id} value={p.id}>{p.full_name ?? p.rm_code ?? p.email}</option>))}
+          </FilterSelect>
+          {snapshot.teams.length > 1 && (
+            <FilterSelect value={teamId} onChange={setTeamId}>
+              <option value="">全部團隊</option>
+              {snapshot.teams.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+            </FilterSelect>
+          )}
+          <span className="font-v4-mono text-[11px] text-ink/45 ml-2">排序</span>
+          <FilterSelect value={sortKey} onChange={(v) => setSortKey(v as SortKey)}>
+            <option value="aum_desc">AUM ↓</option>
+            <option value="aum_asc">AUM ↑</option>
+            <option value="updated_desc">最新更新 ↓</option>
+            <option value="updated_asc">最久未更新 ↑</option>
+            <option value="score_desc">MEDDIC ↓</option>
+            <option value="score_asc">MEDDIC ↑</option>
+          </FilterSelect>
         </div>
 
         <ul className="grid gap-2">
@@ -168,5 +210,17 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
         </ul>
       </section>
     </div>
+  );
+}
+
+function FilterSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-9 rounded-md border border-ink/15 bg-paper px-2.5 text-sm font-semibold text-ink outline-none transition hover:border-ink/30"
+    >
+      {children}
+    </select>
   );
 }
