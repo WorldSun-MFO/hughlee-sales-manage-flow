@@ -1,9 +1,11 @@
 import Link from 'next/link';
-import { ArrowUpRight, Calendar, ClipboardList } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import type { Snapshot } from '@/lib/v4/types';
-import { cn, daysUntil, fmtMoney, priorityReason, TIER_STYLES, urgencyScore } from '@/lib/v4/utils';
+import { cn, fmtMoney, priorityReason, TIER_STYLES, urgencyScore } from '@/lib/v4/utils';
+import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 
 export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
+  const isFixtures = snapshot.source === 'fixtures';
   const priorityDeals = snapshot.deals
     .map((d) => ({ deal: d, score: urgencyScore(d, snapshot.tierConfig) }))
     .filter((x) => x.score > 0)
@@ -97,46 +99,20 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/w
             <div className="label-caps text-ink/55">Tasks · {myTasks.length} 件未完成</div>
             <h2 className="mt-1 font-v4-serif text-2xl font-medium text-ink">我的任務</h2>
           </div>
+          <TaskComposer base={base} snapshot={snapshot} isFixtures={isFixtures} />
         </div>
 
         {myTasks.length === 0 ? (
           <div className="rounded-md border border-ink/10 bg-cream/40 px-6 py-10 text-center text-sm font-semibold text-ink/45">
-            沒有未完成任務。
+            沒有未完成任務。{!isFixtures && ' 上方點「+ 新增任務」開始'}
           </div>
         ) : (
           <ul className="grid gap-2">
-            {myTasks.map((t) => {
-              const due = daysUntil(t.due_date);
-              const dueLabel = due === null ? '無期限' : due < 0 ? `逾期 ${Math.abs(due)} 天` : due === 0 ? '今天' : `${due} 天後`;
-              const dueTone = due !== null && due < 0 ? 'text-claret' : due !== null && due <= 2 ? 'text-brass' : 'text-ink/55';
-              const linkedDeal = snapshot.deals.find((d) => d.id === t.deal_id);
-              return (
-                <li key={t.id}>
-                  <div className="grid grid-cols-[24px_1fr_auto_auto] items-center gap-3 rounded-md border border-ink/10 bg-paper px-4 py-3">
-                    <input type="checkbox" readOnly className="h-4 w-4 rounded border-ink/25 accent-forest" />
-                    <div className="min-w-0">
-                      <div className="font-v4-serif text-base font-medium text-ink">{t.title}</div>
-                      {linkedDeal ? (
-                        <Link href={`${base}/clients/${linkedDeal.id}`} className="mt-0.5 inline-flex items-center gap-1 font-v4-mono text-[11px] text-ink/55 hover:text-ink">
-                          {linkedDeal.name.replace(/^【範例】/, '')} <ArrowUpRight className="h-3 w-3" strokeWidth={1.75} />
-                        </Link>
-                      ) : null}
-                    </div>
-                    <span
-                      className={cn(
-                        'rounded-sm border px-1.5 py-0.5 font-v4-mono text-[10px] font-bold',
-                        t.priority === 'high' ? 'border-claret/30 bg-claret/8 text-claret'
-                          : t.priority === 'normal' ? 'border-ink/15 text-ink/65'
-                            : 'border-ink/10 text-ink/40',
-                      )}
-                    >
-                      {t.priority}
-                    </span>
-                    <span className={cn('font-v4-mono text-xs font-semibold numeric', dueTone)}>{dueLabel}</span>
-                  </div>
-                </li>
-              );
-            })}
+            {myTasks.map((t) => (
+              <li key={t.id}>
+                <TaskRow task={t} snapshot={snapshot} base={base} isFixtures={isFixtures} />
+              </li>
+            ))}
           </ul>
         )}
       </section>

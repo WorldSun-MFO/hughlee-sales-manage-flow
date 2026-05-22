@@ -23,6 +23,7 @@ import { Drawer } from '@/components/v4/Drawer';
 import { DealAIPanel } from '@/components/v4/DealAIPanel';
 import { DealPlanPanel } from '@/components/v4/DealPlanPanel';
 import { addComment, createTask, markContacted, patchDeal, patchScores, splitNextStepIntoTasks } from '@/lib/v4/mutations';
+import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 import { InlineText, InlineTextarea, InlineSelect, InlineDate, InlineScore } from '@/components/v4/InlineEdit';
 
 const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
@@ -337,31 +338,25 @@ export function ClientDetailView({
         )}
       </section>
 
-      {tasks.length > 0 ? (
-        <section className="grid gap-3">
+      <section className="grid gap-3">
+        <div className="flex items-baseline justify-between">
           <div className="label-caps text-ink/55">任務 · {tasks.length}</div>
+          <TaskComposer base={base} snapshot={snapshot} isFixtures={isFixtures} defaultDealId={deal.id} />
+        </div>
+        {tasks.length > 0 ? (
           <ul className="grid gap-2">
             {tasks.map((t) => (
-              <li key={t.id} className="grid grid-cols-[1fr_80px_120px] items-center gap-3 rounded-md border border-ink/10 bg-paper px-4 py-3 text-sm">
-                <div>
-                  <div className="font-semibold text-ink">{t.title}</div>
-                  <div className="font-v4-mono text-[11px] text-ink/45 numeric">due {t.due_date ?? '—'}</div>
-                </div>
-                <span className={cn('rounded-sm border px-1.5 py-0.5 text-center font-v4-mono text-[10px] font-bold',
-                  t.priority === 'high' ? 'border-claret/30 bg-claret/8 text-claret' : 'border-ink/15 text-ink/65')}>
-                  {t.priority}
-                </span>
-                <span className={cn('rounded-sm border px-1.5 py-0.5 text-center font-v4-mono text-[10px] font-bold',
-                  t.status === 'done' ? 'border-forest/30 bg-forest/8 text-forest'
-                    : t.status === 'doing' ? 'border-cobalt/30 bg-cobalt/8 text-cobalt'
-                      : 'border-ink/15 text-ink/65')}>
-                  {t.status}
-                </span>
+              <li key={t.id}>
+                <TaskRow task={t} snapshot={snapshot} base={base} isFixtures={isFixtures} />
               </li>
             ))}
           </ul>
-        </section>
-      ) : null}
+        ) : (
+          <div className="rounded-md border border-dashed border-ink/15 bg-paper/60 px-4 py-6 text-center text-xs text-ink/45">
+            此客戶沒有任務。上方「+ 新增任務」開始,或按上方「拆成任務」自動拆解 next_step。
+          </div>
+        )}
+      </section>
 
       {/* 底部固定 action bar */}
       <section className="sticky bottom-0 -mx-8 grid grid-cols-[1fr_1fr_1fr] gap-2 border-t border-ink/10 bg-cream/95 px-8 py-4 backdrop-blur lg:-mx-14 lg:px-14">
