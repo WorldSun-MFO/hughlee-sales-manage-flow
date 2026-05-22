@@ -5,5 +5,5 @@ export const dynamic = 'force-dynamic';
 
 export default async function WorkspaceMarketPage() {
   const { rows } = await getMarketIntel(20);
-  return <MarketView rows={rows} />;
+  return <MarketView rows={rows} base="/v4/workspace" />;
 }

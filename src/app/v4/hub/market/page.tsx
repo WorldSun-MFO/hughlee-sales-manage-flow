@@ -10,7 +10,7 @@ export default async function HubMarketPage() {
     <>
       <HubTopBar pageLabel="市場大腦" source={snap.source} />
       <div className="mx-auto max-w-[1240px]">
-        <MarketView rows={intel.rows} />
+        <MarketView rows={intel.rows} base="/v4/hub" />
       </div>
     </>
   );
