@@ -138,3 +138,64 @@ export async function savePlan(dealId: string, plan: unknown): Promise<void> {
     .eq('id', dealId);
   if (error) throw error;
 }
+
+// ---------- 新增案件 ----------
+export interface NewDealInput {
+  name: string;
+  aum_usd: number;
+  tier?: Tier | null;
+  product?: string | null;
+  next_step?: string | null;
+  target_close_date?: string | null;
+  first_contact?: string;
+}
+
+/**
+ * 建立新案件。
+ *
+ * 自動值:
+ *   - rm_id = 當前登入者(從 auth.getUser 取)
+ *   - stage = L1
+ *   - first_contact = 今天(若未提供)
+ *   - scores 子表會同步建立一筆全 0 的 row
+ *
+ * 回傳新建 deal 的 id,給呼叫端 navigate 用。
+ */
+export async function createDeal(input: NewDealInput): Promise<string> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('未登入');
+
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('deals')
+    .insert({
+      name: input.name,
+      rm_id: user.id,
+      aum_usd: input.aum_usd,
+      tier: input.tier ?? null,
+      stage: 'L1' as StageId,
+      product: input.product ?? null,
+      next_step: input.next_step ?? null,
+      target_close_date: input.target_close_date ?? null,
+      first_contact: input.first_contact ?? today,
+      last_updated: now,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+
+  const newId = (data as { id: string }).id;
+
+  // scores 子表先塞一筆全 0,讓 inline edit 立刻可以改
+  const { error: scoreErr } = await supabase
+    .from('scores')
+    .insert({ deal_id: newId, m: 0, e: 0, d1: 0, d2: 0, p: 0, i: 0, c1: 0, c2: 0 });
+  // 不檢查 scoreErr,因為某些 schema 可能設了 trigger 自動建立 scores;
+  // 若 unique violation 表示已有 row,可忽略
+  void scoreErr;
+
+  return newId;
+}

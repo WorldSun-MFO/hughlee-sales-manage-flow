@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import type { Snapshot } from '@/lib/v4/types';
 import { fmtMoney, totalScore, TIER_STYLES } from '@/lib/v4/utils';
+import { AddDealButton } from '@/components/v4/AddDealButton';
 
 export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
+  const isFixtures = snapshot.source === 'fixtures';
   const grouped = new Map<string, typeof snapshot.deals>();
   for (const tier of ['SSS', 'S', 'A', 'B', 'C'] as const) {
     grouped.set(tier, snapshot.deals.filter((d) => d.tier === tier));
@@ -12,10 +14,17 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
   return (
     <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
       <header className="grid gap-2">
-        <div className="label-caps text-ink/45">Clients</div>
-        <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
-          客戶名冊
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <div className="grid gap-2">
+            <div className="label-caps text-ink/45">Clients</div>
+            <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
+              客戶名冊
+            </h1>
+          </div>
+          <div className="pt-2">
+            <AddDealButton base={base} isFixtures={isFixtures} />
+          </div>
+        </div>
         <p className="max-w-2xl text-base leading-7 text-ink/65">
           以等級分組。每位客戶獨立頁面承載 MEDDIC 評分、對話紀錄、AI 路徑、任務。
         </p>
