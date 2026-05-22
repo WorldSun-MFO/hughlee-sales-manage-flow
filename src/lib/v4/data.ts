@@ -86,6 +86,42 @@ export interface MarketIntelRow {
   created_at: string;
 }
 
+// ============================================================
+// Settings + 當前使用者 — Sprint L 用
+// ============================================================
+export interface SettingsRow {
+  id: 1;
+  stage_probs: Record<string, number>;
+  red_flag: { ebScore: number; totalScore: number; staleDays: number; contactWarnDays?: number };
+  tier_config: { tiers: TierConfigItem[] };
+}
+
+export async function getSettings(): Promise<SettingsRow | null> {
+  if (IS_DEMO) return null;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from('settings').select('*').eq('id', 1).single();
+    if (error) throw error;
+    return data as SettingsRow;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCurrentProfile(): Promise<import('./types').Profile | null> {
+  if (IS_DEMO) return null;
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+    if (error) throw error;
+    return data as import('./types').Profile;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMarketIntel(limit = 20): Promise<{ rows: MarketIntelRow[]; source: 'supabase' | 'empty' }> {
   if (IS_DEMO) return { rows: [], source: 'empty' };
   try {

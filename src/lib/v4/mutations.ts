@@ -186,6 +186,52 @@ export async function savePlan(dealId: string, plan: unknown): Promise<void> {
   if (error) throw error;
 }
 
+// ============================================================
+// Admin / Settings 區
+// ============================================================
+
+// ---------- App settings(stage_probs / red_flag / tier_config)----------
+export interface SettingsPatch {
+  stage_probs?: Record<StageId, number>;
+  red_flag?: { ebScore?: number; totalScore?: number; staleDays?: number; contactWarnDays?: number };
+  tier_config?: { tiers: import('./types').TierConfigItem[] };
+}
+
+export async function updateSettings(patch: SettingsPatch): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('settings').update(patch).eq('id', 1);
+  if (error) throw error;
+}
+
+// ---------- Teams ----------
+export async function createTeam(name: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('teams').insert({ name });
+  if (error) throw error;
+}
+
+export async function renameTeam(id: string, name: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('teams').update({ name }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('teams').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ---------- Profile(成員)----------
+export async function patchProfile(
+  id: string,
+  patch: Partial<{ full_name: string; role: import('./types').Role; team_id: string | null; rm_code: string | null }>,
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('profiles').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
 // ---------- 新增案件 ----------
 export interface NewDealInput {
   name: string;
