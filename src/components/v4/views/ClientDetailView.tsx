@@ -16,13 +16,14 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, Loader2, Phone, Send, Sparkles, TrendingUp } from 'lucide-react';
-import type { Scores, Snapshot } from '@/lib/v4/types';
-import { STAGE_PROB } from '@/lib/v4/constants';
+import type { Scores, Snapshot, StageId, Tier } from '@/lib/v4/types';
+import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { cn, contactOverdue, daysSince, fmtMoney, redFlag, totalScore, TIER_STYLES } from '@/lib/v4/utils';
 import { Drawer } from '@/components/v4/Drawer';
 import { DealAIPanel } from '@/components/v4/DealAIPanel';
 import { DealPlanPanel } from '@/components/v4/DealPlanPanel';
-import { addComment, markContacted } from '@/lib/v4/mutations';
+import { addComment, markContacted, patchDeal, patchScores } from '@/lib/v4/mutations';
+import { InlineText, InlineTextarea, InlineSelect, InlineDate, InlineScore } from '@/components/v4/InlineEdit';
 
 const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
   ['m', 'M', 'Metrics'],
@@ -119,18 +120,46 @@ export function ClientDetailView({
 
       <header className="grid gap-3">
         <div className="flex items-center gap-2">
-          {deal.tier ? (
-            <span className={`rounded-sm px-2 py-1 font-v4-mono text-[11px] font-bold ${TIER_STYLES[deal.tier]}`}>{deal.tier}</span>
-          ) : null}
-          <span className={`stage-${deal.stage} rounded-sm px-2 py-1 font-v4-mono text-[11px] font-bold`}>
-            {deal.stage} · {STAGE_PROB[deal.stage]}%
-          </span>
+          <InlineSelect<Tier>
+            value={deal.tier}
+            options={[{ value: 'SSS' as Tier, label: 'SSS · 旗艦' }, { value: 'S' as Tier, label: 'S · 高階' }, { value: 'A' as Tier, label: 'A · 中階' }, { value: 'B' as Tier, label: 'B · 初階' }, { value: 'C' as Tier, label: 'C · 基礎' }]}
+            onSave={async (next) => { await patchDeal(deal.id, { tier: next }); startTransition(() => router.refresh()); }}
+            isFixtures={isFixtures}
+            renderDisplay={(v) => v
+              ? <span className={`rounded-sm px-2 py-1 font-v4-mono text-[11px] font-bold ${TIER_STYLES[v]}`}>{v}</span>
+              : <span className="rounded-sm border border-ink/15 px-2 py-1 font-v4-mono text-[11px] text-ink/45">設 Tier</span>}
+          />
+          <InlineSelect<StageId>
+            value={deal.stage}
+            options={STAGES.map((s) => ({ value: s.id, label: `${s.id} · ${s.name}` }))}
+            onSave={async (next) => { if (next) { await patchDeal(deal.id, { stage: next }); startTransition(() => router.refresh()); } }}
+            isFixtures={isFixtures}
+            renderDisplay={(v) => v
+              ? <span className={`stage-${v} rounded-sm px-2 py-1 font-v4-mono text-[11px] font-bold`}>{v} · {STAGE_PROB[v]}%</span>
+              : <span className="rounded-sm border border-ink/15 px-2 py-1 font-v4-mono text-[11px] text-ink/45">設階段</span>}
+          />
           <span className="font-v4-mono text-[11px] text-ink/45 numeric">DEAL · {deal.id.toUpperCase()}</span>
         </div>
-        <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
-          {deal.name.replace(/^【範例】/, '')}
-        </h1>
-        <div className="font-v4-mono text-sm text-ink/55">{deal.product ?? '—'} · {deal.rm?.full_name ?? '—'}</div>
+
+        <InlineText
+          value={deal.name.replace(/^【範例】/, '')}
+          onSave={async (next) => { await patchDeal(deal.id, { name: next }); startTransition(() => router.refresh()); }}
+          isFixtures={isFixtures}
+          placeholder="(尚未命名)"
+          displayClassName="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]"
+        />
+
+        <div className="grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-1 font-v4-mono text-sm text-ink/55 lg:grid-cols-[auto_auto_1fr] lg:gap-x-6">
+          <span className="label-caps text-ink/45 self-center">產品</span>
+          <InlineText
+            value={deal.product ?? ''}
+            onSave={async (next) => { await patchDeal(deal.id, { product: next || null }); startTransition(() => router.refresh()); }}
+            isFixtures={isFixtures}
+            placeholder="(未填產品)"
+            displayClassName="font-v4-mono text-sm text-ink"
+          />
+          <span className="font-v4-mono text-xs text-ink/45">RM · {deal.rm?.full_name ?? '—'}</span>
+        </div>
       </header>
 
       {(rf || ci?.status === 'overdue') ? (
@@ -157,32 +186,49 @@ export function ClientDetailView({
 
       <section className="grid gap-3">
         <div className="label-caps text-ink/55">下一步</div>
-        <div className="rounded-md border border-ink/10 bg-cream/60 p-6 font-v4-serif text-lg leading-relaxed text-ink whitespace-pre-wrap">
-          {deal.next_step ?? '尚未填寫下一步。'}
+        <div className="rounded-md border border-ink/10 bg-cream/60 p-4">
+          <InlineTextarea
+            value={deal.next_step}
+            onSave={async (next) => { await patchDeal(deal.id, { next_step: next }); startTransition(() => router.refresh()); }}
+            isFixtures={isFixtures}
+            placeholder="尚未填寫下一步。點擊撰寫..."
+            rows={4}
+            displayClassName="font-v4-serif text-lg leading-relaxed text-ink"
+          />
         </div>
-        {deal.target_close_date ? (
-          <div className="flex items-center gap-1.5 font-v4-mono text-xs text-ink/55">
-            <Calendar className="h-3 w-3" strokeWidth={2} />
-            目標成交 <span className="font-semibold text-ink numeric">{deal.target_close_date}</span>
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2 font-v4-mono text-xs text-ink/55">
+          <Calendar className="h-3 w-3" strokeWidth={2} />
+          目標成交
+          <InlineDate
+            value={deal.target_close_date}
+            onSave={async (next) => { await patchDeal(deal.id, { target_close_date: next }); startTransition(() => router.refresh()); }}
+            isFixtures={isFixtures}
+          />
+        </div>
       </section>
 
       <section className="grid gap-3">
-        <div className="label-caps text-ink/55">MEDDIC 評分</div>
+        <div className="flex items-baseline justify-between">
+          <div className="label-caps text-ink/55">MEDDIC 評分</div>
+          <div className="font-v4-mono text-[10.5px] text-ink/45">點分數即可修改 · 0–10 整數</div>
+        </div>
         <div className="grid gap-2 rounded-md border border-ink/10 bg-paper p-5 sm:grid-cols-2">
           {MEDDIC_LABELS.map(([k, key, label]) => {
             const v = deal.scores?.[k] ?? 0;
             const tone = v >= 8 ? 'bg-forest' : v >= 5 ? 'bg-brass' : v >= 3 ? 'bg-ink/40' : 'bg-claret/70';
             return (
-              <div key={k} className="grid grid-cols-[40px_1fr_80px] items-center gap-3 rounded-sm border border-ink/8 px-3 py-2">
+              <div key={k} className="grid grid-cols-[40px_1fr_90px] items-center gap-3 rounded-sm border border-ink/8 px-3 py-2">
                 <span className="font-v4-mono text-sm font-bold text-ink">{key}</span>
                 <span className="text-xs text-ink/65">{label}</span>
                 <div className="flex items-center justify-end gap-2">
                   <div className="h-1.5 w-14 overflow-hidden rounded-full bg-ink/8">
                     <div className={cn('h-full', tone)} style={{ width: `${v * 10}%` }} />
                   </div>
-                  <span className="font-v4-mono text-sm font-semibold text-ink numeric">{v}</span>
+                  <InlineScore
+                    value={v}
+                    onSave={async (next) => { await patchScores(deal.id, { [k]: next } as Partial<Scores>); startTransition(() => router.refresh()); }}
+                    isFixtures={isFixtures}
+                  />
                 </div>
               </div>
             );
