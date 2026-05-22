@@ -71,3 +71,35 @@ export async function getSnapshot(): Promise<Snapshot> {
     return fixtureSnapshot;
   }
 }
+
+// ============================================================
+// 市場情報 — 只給 /v4/.../market 頁面用,不放進主 Snapshot 避免每頁都載
+// ============================================================
+export interface MarketIntelRow {
+  id: string;
+  title: string;
+  region: 'TW' | 'US' | 'JP' | 'CN' | 'GLOBAL';
+  stance: 'bullish' | 'bearish' | 'neutral' | 'na';
+  summary: string | null;
+  source_type: string | null;
+  published_at: string | null;
+  created_at: string;
+}
+
+export async function getMarketIntel(limit = 20): Promise<{ rows: MarketIntelRow[]; source: 'supabase' | 'empty' }> {
+  if (IS_DEMO) return { rows: [], source: 'empty' };
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { rows: [], source: 'empty' };
+    const { data, error } = await supabase
+      .from('market_intel')
+      .select('id, title, region, stance, summary, source_type, published_at, created_at')
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .limit(limit);
+    if (error) throw error;
+    return { rows: (data ?? []) as MarketIntelRow[], source: 'supabase' };
+  } catch {
+    return { rows: [], source: 'empty' };
+  }
+}

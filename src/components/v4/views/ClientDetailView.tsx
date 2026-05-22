@@ -25,6 +25,7 @@ import { DealPlanPanel } from '@/components/v4/DealPlanPanel';
 import { addComment, createTask, markContacted, patchDeal, patchScores, setScoreNote, splitNextStepIntoTasks, toggleChecklistItem, setDealQuestion } from '@/lib/v4/mutations';
 import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 import { AttachmentChip } from '@/components/v4/AttachmentTray';
+import { DealAmmoSection } from '@/components/v4/DealAmmoSection';
 import { Paperclip, ChevronRight as ChevronRightIcon, HelpCircle } from 'lucide-react';
 import { CHECKLIST, QUESTION_BANK } from '@/lib/constants';
 import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
@@ -358,6 +359,9 @@ export function ClientDetailView({
 
       {/* 待澄清題目 */}
       <DealQuestionsSection deal={deal} isFixtures={isFixtures} onChanged={() => startTransition(() => router.refresh())} />
+
+      {/* 客戶彈藥庫 — AI 配對市場情報 */}
+      <DealAmmoSection dealId={deal.id} isFixtures={isFixtures} />
 
       {(deal.deal_attachments?.length ?? 0) > 0 && (
         <section className="grid gap-3">
