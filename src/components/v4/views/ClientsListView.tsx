@@ -7,6 +7,7 @@ import type { Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGES } from '@/lib/v4/constants';
 import { daysSince, fmtMoney, totalScore, TIER_STYLES } from '@/lib/v4/utils';
 import { AddDealButton } from '@/components/v4/AddDealButton';
+import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 
 type SortKey = 'aum_desc' | 'aum_asc' | 'updated_desc' | 'updated_asc' | 'score_desc' | 'score_asc' | 'name_asc';
 
@@ -57,6 +58,7 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
 
   return (
     <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+      <RealtimeRefresher isFixtures={isFixtures} tables={['deals', 'scores']} />
       <header className="grid gap-2">
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-2">

@@ -3,6 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import type { Snapshot } from '@/lib/v4/types';
 import { cn, fmtMoney, priorityReason, TIER_STYLES, urgencyScore } from '@/lib/v4/utils';
 import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
+import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 
 export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
   const isFixtures = snapshot.source === 'fixtures';
@@ -18,6 +19,7 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/w
 
   return (
     <div className="grid gap-12 px-8 py-10 lg:px-14 lg:py-14">
+      <RealtimeRefresher isFixtures={isFixtures} tables={['deals', 'tasks', 'comments']} />
       <header className="grid gap-2">
         <div className="label-caps text-ink/45">Today · {today}</div>
         <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">

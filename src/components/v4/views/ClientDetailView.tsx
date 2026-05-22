@@ -27,6 +27,7 @@ import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 import { AttachmentChip } from '@/components/v4/AttachmentTray';
 import { Paperclip, ChevronRight as ChevronRightIcon, HelpCircle } from 'lucide-react';
 import { CHECKLIST, QUESTION_BANK } from '@/lib/constants';
+import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 import { InlineText, InlineTextarea, InlineSelect, InlineDate, InlineScore } from '@/components/v4/InlineEdit';
 
 const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
@@ -138,6 +139,7 @@ export function ClientDetailView({
 
   return (
     <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+      <RealtimeRefresher isFixtures={isFixtures} />
       <div>
         <Link href={backHref} className="inline-flex items-center gap-1.5 font-v4-mono text-xs font-semibold text-ink/55 transition hover:text-ink">
           <ArrowLeft className="h-3 w-3" strokeWidth={2} /> {backHref.includes('pipeline') ? '回 Pipeline' : backHref.includes('today') ? '回今日' : '回客戶名冊'}

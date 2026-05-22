@@ -6,6 +6,7 @@ import { ArrowUpRight, Search } from 'lucide-react';
 import type { Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { cn, daysSince, fmtMoney, priorityReason, totalScore, TIER_STYLES } from '@/lib/v4/utils';
+import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 
 type SortKey = 'aum_desc' | 'aum_asc' | 'updated_desc' | 'updated_asc' | 'score_desc' | 'score_asc';
 
@@ -50,6 +51,7 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
   }, [snapshot.deals, snapshot.profiles, stage, tier, rmId, teamId, q, sortKey]);
 
   const hasFilter = stage || tier || rmId || teamId || q;
+  const isFixtures = snapshot.source === 'fixtures';
 
   const stageCount = (s: StageId) => snapshot.deals.filter((d) => d.stage === s).length;
   const stageAum = (s: StageId) => snapshot.deals.filter((d) => d.stage === s).reduce((sum, d) => sum + Number(d.aum_usd), 0);
@@ -57,6 +59,7 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
 
   return (
     <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+      <RealtimeRefresher isFixtures={isFixtures} tables={['deals', 'scores', 'tasks']} />
       <header className="grid gap-2">
         <div className="label-caps text-ink/45">Pipeline</div>
         <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
