@@ -9,13 +9,15 @@
 //
 // 接的後端跟 AIChatView 完全一樣:POST /api/ai/parse-interaction
 // ============================================================
-import { useState } from 'react';
-import { Sparkles, ArrowUp, Lightbulb } from 'lucide-react';
-import type { Deal, StageId } from '@/lib/v4/types';
+import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { Sparkles, ArrowUp, Lightbulb, Check, Loader2 } from 'lucide-react';
+import type { Deal, Scores, StageId } from '@/lib/v4/types';
 import { fmtMoney, cn } from '@/lib/v4/utils';
 import { STAGES } from '@/lib/v4/constants';
 import { AttachmentTray } from '@/components/v4/AttachmentTray';
 import type { UploadedAttachment } from '@/lib/v4/upload';
+import { patchDeal, patchScores, addComment } from '@/lib/v4/mutations';
 
 interface ScoreUpdate { field: string; old: number; new: number; reason: string }
 interface ParseResult {
@@ -114,7 +116,7 @@ export function DealAIPanel({ deal, isFixtures }: { deal: Deal; isFixtures: bool
         )}
       </section>
 
-      {result && <ParseResultPanel result={result} />}
+      {result && <ParseResultPanel result={result} dealId={deal.id} isFixtures={isFixtures} onApplied={() => setResult(null)} />}
 
       {!result && !busy && !error && (
         <div className="grid place-items-center gap-2 rounded-md border border-dashed border-ink/15 bg-paper/60 px-6 py-10 text-center">
@@ -126,10 +128,66 @@ export function DealAIPanel({ deal, isFixtures }: { deal: Deal; isFixtures: bool
   );
 }
 
-function ParseResultPanel({ result }: { result: ParseResult }) {
+function ParseResultPanel({
+  result, dealId, isFixtures, onApplied,
+}: {
+  result: ParseResult;
+  dealId: string;
+  isFixtures: boolean;
+  onApplied: () => void;
+}) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  // 預設全部勾選(讓 RM 一鍵 apply,不想要的再個別取消)
+  const [pickScores, setPickScores] = useState<boolean[]>(() => result.score_updates.map(() => true));
+  const [pickComment, setPickComment] = useState(!!result.new_comment);
+  const [pickNextStep, setPickNextStep] = useState(result.next_step_update !== null);
+  const [pickStage, setPickStage] = useState(!!result.stage_suggestion);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const totalPicks = pickScores.filter(Boolean).length + (pickComment ? 1 : 0) + (pickNextStep ? 1 : 0) + (pickStage ? 1 : 0);
+
+  async function applyAll() {
+    if (busy || isFixtures) {
+      if (isFixtures) setError('fixtures 模式無法套用');
+      return;
+    }
+    setBusy(true); setError(null);
+    try {
+      // scores
+      const scoresPatch: Partial<Scores> = {};
+      result.score_updates.forEach((u, i) => {
+        if (pickScores[i]) (scoresPatch as Record<string, number>)[u.field] = u.new;
+      });
+      if (Object.keys(scoresPatch).length > 0) await patchScores(dealId, scoresPatch);
+
+      // deal 欄位
+      const dealPatch: { next_step?: string | null; stage?: StageId } = {};
+      if (pickNextStep && result.next_step_update !== null) dealPatch.next_step = result.next_step_update;
+      if (pickStage && result.stage_suggestion) dealPatch.stage = result.stage_suggestion;
+      if (Object.keys(dealPatch).length > 0) await patchDeal(dealId, dealPatch);
+
+      // comment
+      if (pickComment && result.new_comment) await addComment(dealId, result.new_comment, { isRaw: false });
+
+      setDone(true);
+      startTransition(() => router.refresh());
+      setTimeout(() => { setDone(false); onApplied(); }, 1500);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="grid gap-3">
-      <div className="label-caps text-ink/50">AI 解析結果</div>
+      <div className="flex items-baseline justify-between">
+        <div className="label-caps text-ink/50">AI 解析結果</div>
+        <div className="font-v4-mono text-[10.5px] text-ink/45">勾選要套用的項目 ↓</div>
+      </div>
 
       <article className="grid gap-1.5 rounded-md border border-ink/10 bg-paper p-4">
         <div className="label-caps text-forest/80">一句話總結</div>
@@ -142,8 +200,10 @@ function ParseResultPanel({ result }: { result: ParseResult }) {
           <ol className="grid gap-2">
             {result.score_updates.map((u, i) => {
               const delta = u.new - u.old;
+              const picked = pickScores[i];
               return (
-                <li key={i} className="grid grid-cols-[1fr_auto] items-start gap-3 border-t border-ink/8 pt-2 first:border-t-0 first:pt-0">
+                <li key={i} className={cn('grid grid-cols-[auto_1fr_auto] items-start gap-3 border-t border-ink/8 pt-2 first:border-t-0 first:pt-0 transition', !picked && 'opacity-40')}>
+                  <PickBox checked={picked} onChange={(v) => setPickScores((p) => p.map((x, j) => j === i ? v : x))} />
                   <div className="grid gap-0.5">
                     <div className="text-sm font-semibold text-ink">{SCORE_LABEL[u.field] ?? u.field}</div>
                     <div className="text-xs text-ink/65">{u.reason}</div>
@@ -161,29 +221,38 @@ function ParseResultPanel({ result }: { result: ParseResult }) {
       )}
 
       {result.new_comment && (
-        <article className="grid gap-1.5 rounded-md border border-ink/10 bg-paper p-4">
-          <div className="label-caps text-ink/55">AI 摘要(將寫入時間軸)</div>
-          <p className="text-sm leading-6 text-ink/85 whitespace-pre-wrap">{result.new_comment}</p>
+        <article className={cn('grid grid-cols-[auto_1fr] items-start gap-3 rounded-md border border-ink/10 bg-paper p-4 transition', !pickComment && 'opacity-40')}>
+          <PickBox checked={pickComment} onChange={setPickComment} />
+          <div className="grid gap-1.5">
+            <div className="label-caps text-ink/55">AI 摘要(將寫入時間軸)</div>
+            <p className="text-sm leading-6 text-ink/85 whitespace-pre-wrap">{result.new_comment}</p>
+          </div>
         </article>
       )}
 
       {result.next_step_update && (
-        <article className="grid gap-1.5 rounded-md border border-ink/10 bg-paper p-4">
-          <div className="label-caps text-brass">建議下一步</div>
-          <p className="text-sm leading-6 text-ink/85 whitespace-pre-wrap">{result.next_step_update}</p>
+        <article className={cn('grid grid-cols-[auto_1fr] items-start gap-3 rounded-md border border-ink/10 bg-paper p-4 transition', !pickNextStep && 'opacity-40')}>
+          <PickBox checked={pickNextStep} onChange={setPickNextStep} />
+          <div className="grid gap-1.5">
+            <div className="label-caps text-brass">建議下一步</div>
+            <p className="text-sm leading-6 text-ink/85 whitespace-pre-wrap">{result.next_step_update}</p>
+          </div>
         </article>
       )}
 
       {result.stage_suggestion && (
-        <article className="grid gap-1.5 rounded-md border border-ink/10 bg-paper p-4">
-          <div className="label-caps text-cobalt">建議轉階段</div>
-          <p className="text-sm text-ink/85">→ <span className="font-v4-mono font-semibold">{result.stage_suggestion}</span></p>
+        <article className={cn('grid grid-cols-[auto_1fr] items-start gap-3 rounded-md border border-ink/10 bg-paper p-4 transition', !pickStage && 'opacity-40')}>
+          <PickBox checked={pickStage} onChange={setPickStage} />
+          <div className="grid gap-1.5">
+            <div className="label-caps text-cobalt">建議轉階段</div>
+            <p className="text-sm text-ink/85">→ <span className="font-v4-mono font-semibold">{result.stage_suggestion}</span></p>
+          </div>
         </article>
       )}
 
       {result.ask_back.length > 0 && (
         <article className="grid gap-2 rounded-md border border-ink/10 bg-paper p-4">
-          <div className="label-caps text-ink/55">下次該追問</div>
+          <div className="label-caps text-ink/55">下次該追問(僅參考,不會寫入)</div>
           <ul className="grid gap-1.5">
             {result.ask_back.map((q, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-ink/80">
@@ -194,6 +263,43 @@ function ParseResultPanel({ result }: { result: ParseResult }) {
           </ul>
         </article>
       )}
+
+      {/* Apply 操作列 */}
+      <div className="sticky bottom-0 -mx-6 grid gap-2 border-t border-ink/10 bg-paper/95 px-6 py-3 backdrop-blur">
+        {error && <div className="rounded-md border border-claret/30 bg-claret/5 px-3 py-2 text-xs text-claret">{error}</div>}
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-v4-mono text-[10.5px] text-ink/55">勾 {totalPicks} 項將寫回 deal · 紅旗 / 排序會立刻刷新</span>
+          <button
+            type="button"
+            onClick={applyAll}
+            disabled={busy || done || totalPicks === 0}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-paper transition',
+              done ? 'bg-forest' : 'bg-ink hover:bg-graphite',
+              'disabled:cursor-not-allowed disabled:opacity-50',
+            )}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : done ? <Check className="h-4 w-4" strokeWidth={2} /> : <ArrowUp className="h-4 w-4 rotate-45" strokeWidth={1.75} />}
+            {busy ? '套用中…' : done ? '已套用' : `套用 ${totalPicks} 項`}
+          </button>
+        </div>
+      </div>
     </section>
+  );
+}
+
+function PickBox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-sm border transition',
+        checked ? 'border-ink bg-ink text-paper' : 'border-ink/30 bg-paper hover:border-ink/50',
+      )}
+      aria-pressed={checked}
+    >
+      {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+    </button>
   );
 }
