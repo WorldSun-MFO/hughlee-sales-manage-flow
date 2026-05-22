@@ -232,6 +232,31 @@ export async function patchProfile(
   if (error) throw error;
 }
 
+// ---------- 成員停用 / 復原(admin only;走 RPC,SQL function 端再次驗權)----------
+export async function banMember(email: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc('admin_ban_user', { p_email: email });
+  if (error) throw error;
+}
+
+export async function unbanMember(email: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc('admin_unban_user', { p_email: email });
+  if (error) throw error;
+}
+
+// ---------- 一次性登入連結(admin only;走 /api/admin/login-link)----------
+export async function generateLoginLink(email: string): Promise<string> {
+  const res = await fetch('/api/admin/login-link', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((j as { error?: string }).error || '產生連結失敗');
+  return (j as { link: string }).link;
+}
+
 // ---------- 新增案件 ----------
 export interface NewDealInput {
   name: string;

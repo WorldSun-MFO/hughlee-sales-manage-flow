@@ -17,13 +17,14 @@
 // ============================================================
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Plus, Settings as SettingsIcon, Users, Shield, Trash2, Check } from 'lucide-react';
+import { Loader2, Plus, Settings as SettingsIcon, Users, Shield, Trash2, Check, Ban, RotateCcw, Link as LinkIcon, Copy } from 'lucide-react';
 import type { Profile, Role, StageId, Snapshot } from '@/lib/v4/types';
-import type { SettingsRow } from '@/lib/v4/data';
+import type { SettingsRow, MemberStatusMap } from '@/lib/v4/data';
 import { STAGES } from '@/lib/v4/constants';
 import { cn } from '@/lib/v4/utils';
 import {
   updateSettings, createTeam, renameTeam, deleteTeam, patchProfile,
+  banMember, unbanMember, generateLoginLink,
 } from '@/lib/v4/mutations';
 import { InlineText, InlineSelect } from '@/components/v4/InlineEdit';
 import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
@@ -36,11 +37,12 @@ const ROLE_OPTIONS: ReadonlyArray<{ value: Role; label: string }> = [
 ];
 
 export function SettingsView({
-  snapshot, currentProfile, settings,
+  snapshot, currentProfile, settings, memberStatus = {},
 }: {
   snapshot: Snapshot;
   currentProfile: Profile | null;
   settings: SettingsRow | null;
+  memberStatus?: MemberStatusMap;
 }) {
   const isAdmin = currentProfile?.role === 'admin';
   const isFixtures = snapshot.source === 'fixtures';
@@ -86,7 +88,7 @@ export function SettingsView({
       {isAdmin && <TeamsSection snapshot={snapshot} isFixtures={isFixtures} />}
 
       {/* 4. Members */}
-      {isAdmin && <MembersSection snapshot={snapshot} isFixtures={isFixtures} />}
+      {isAdmin && <MembersSection snapshot={snapshot} isFixtures={isFixtures} memberStatus={memberStatus} />}
 
       {!isAdmin && (
         <div className="rounded-md border border-dashed border-ink/15 bg-paper/60 px-6 py-10 text-center text-sm text-ink/45">
@@ -313,7 +315,11 @@ function TeamsSection({ snapshot, isFixtures }: { snapshot: Snapshot; isFixtures
 // ============================================================
 // 4. Members
 // ============================================================
-function MembersSection({ snapshot, isFixtures }: { snapshot: Snapshot; isFixtures: boolean }) {
+function MembersSection({
+  snapshot, isFixtures, memberStatus,
+}: {
+  snapshot: Snapshot; isFixtures: boolean; memberStatus: MemberStatusMap;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
@@ -342,45 +348,190 @@ function MembersSection({ snapshot, isFixtures }: { snapshot: Snapshot; isFixtur
       </div>
       {err && <div className="rounded-md border border-claret/30 bg-claret/5 px-3 py-2 text-xs text-claret">{err}</div>}
       <div className="grid gap-2 rounded-md border border-ink/10 bg-paper p-5">
-        <div className="grid grid-cols-[1fr_140px_140px_140px] items-center gap-3 border-b border-ink/10 pb-2 font-v4-mono text-[10.5px] font-bold uppercase tracking-widest text-ink/45">
-          <span>姓名 / Email</span><span>RM Code</span><span>角色</span><span>團隊</span>
-        </div>
-        <ul className="grid gap-0">
+        <ul className="grid gap-2">
           {snapshot.profiles.map((p) => (
-            <li key={p.id} className="grid grid-cols-[1fr_140px_140px_140px] items-center gap-3 border-b border-ink/8 py-2 last:border-b-0">
-              <div className="min-w-0">
-                <InlineText
-                  value={p.full_name ?? ''}
-                  onSave={async (v) => changeName(p.id, v)}
-                  isFixtures={isFixtures}
-                  placeholder="(未命名)"
-                  displayClassName="font-v4-serif text-sm font-semibold text-ink"
-                />
-                <div className="mt-0.5 truncate font-v4-mono text-[11px] text-ink/55">{p.email}</div>
-              </div>
-              <span className="font-v4-mono text-xs text-ink/55">{p.rm_code ?? '—'}</span>
-              <InlineSelect<Role>
-                value={p.role}
-                options={ROLE_OPTIONS}
-                onSave={(v) => changeRole(p.id, v)}
+            <li key={p.id}>
+              <MemberRow
+                profile={p}
+                teams={snapshot.teams}
+                status={memberStatus[p.id]}
                 isFixtures={isFixtures}
-                renderDisplay={(v) => <span className="font-v4-mono text-xs font-semibold text-ink">{v ? ROLE_LABEL[v] : '—'}</span>}
-              />
-              <InlineSelect<string>
-                value={p.team_id}
-                options={snapshot.teams.map((t) => ({ value: t.id, label: t.name }))}
-                onSave={(v) => changeTeam(p.id, v)}
-                isFixtures={isFixtures}
-                renderDisplay={(v) => <span className="font-v4-mono text-xs text-ink/75">{snapshot.teams.find((t) => t.id === v)?.name ?? '— 無'}</span>}
+                onChangeName={(v) => changeName(p.id, v)}
+                onChangeRole={(v) => changeRole(p.id, v)}
+                onChangeTeam={(v) => changeTeam(p.id, v)}
+                onChanged={() => startTransition(() => router.refresh())}
               />
             </li>
           ))}
         </ul>
         <div className="mt-2 grid gap-1 border-t border-ink/10 pt-3 font-v4-mono text-[10.5px] text-ink/45">
-          <div className="inline-flex items-center gap-1.5"><Check className="h-3 w-3 text-forest" strokeWidth={2.5} /> 點任何欄位直接改 · 儲存後 realtime 同步</div>
-          <div>新增成員 / 停用 / 產生登入連結等流程,目前仍在 /(主 Dashboard)的「設定」找。</div>
+          <div className="inline-flex items-center gap-1.5"><Check className="h-3 w-3 text-forest" strokeWidth={2.5} /> 點欄位直接改 · realtime 同步</div>
+          <div className="inline-flex items-center gap-1.5"><Ban className="h-3 w-3 text-claret" strokeWidth={2} /> 停用 = 軟撤銷,對方無法登入但資料保留,可隨時復原</div>
+          <div className="inline-flex items-center gap-1.5"><LinkIcon className="h-3 w-3 text-cobalt" strokeWidth={2} /> 一次性登入連結讓對方不經 Google 也能進系統,適合 onboarding</div>
         </div>
       </div>
     </section>
+  );
+}
+
+function MemberRow({
+  profile, teams, status, isFixtures,
+  onChangeName, onChangeRole, onChangeTeam, onChanged,
+}: {
+  profile: Profile;
+  teams: { id: string; name: string }[];
+  status: { has_auth: boolean; banned: boolean } | undefined;
+  isFixtures: boolean;
+  onChangeName: (v: string) => Promise<void>;
+  onChangeRole: (v: Role | null) => Promise<void>;
+  onChangeTeam: (v: string | null) => Promise<void>;
+  onChanged: () => void;
+}) {
+  const banned = status?.banned ?? false;
+  const [busy, setBusy] = useState<null | 'ban' | 'unban' | 'link'>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const [linkErr, setLinkErr] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  async function doBan() {
+    if (busy || isFixtures) return;
+    const typed = window.prompt(
+      `確定停用「${profile.full_name || profile.email}」的登入?\n` +
+      `對方會立即被踢出且無法再登入(資料保留、可日後復原)。\n\n` +
+      `請輸入對方 email 確認:`,
+    );
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== profile.email.toLowerCase()) {
+      alert('輸入的 email 不符,已取消');
+      return;
+    }
+    setBusy('ban');
+    try { await banMember(profile.email); onChanged(); }
+    catch (e) { alert(`停用失敗:${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }
+  async function doUnban() {
+    if (busy || isFixtures) return;
+    if (!confirm(`復原「${profile.full_name || profile.email}」的登入?對方將可重新登入。`)) return;
+    setBusy('unban');
+    try { await unbanMember(profile.email); onChanged(); }
+    catch (e) { alert(`復原失敗:${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }
+  async function doGenLink() {
+    if (busy || isFixtures) return;
+    setBusy('link'); setLinkErr(null); setLink(null);
+    try {
+      const url = await generateLoginLink(profile.email);
+      setLink(url);
+    } catch (e) { setLinkErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+  async function copyLink() {
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); }
+    catch { /* noop */ }
+  }
+
+  return (
+    <div className={cn('grid gap-2 rounded-md border px-4 py-3 transition', banned ? 'border-claret/20 bg-claret/5' : 'border-ink/10 bg-paper')}>
+      <div className="grid grid-cols-[1fr_140px_140px_140px_auto] items-center gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <InlineText
+              value={profile.full_name ?? ''}
+              onSave={onChangeName}
+              isFixtures={isFixtures}
+              placeholder="(未命名)"
+              displayClassName="font-v4-serif text-sm font-semibold text-ink"
+            />
+            {banned && <span className="rounded-sm bg-claret/15 px-1.5 py-0.5 font-v4-mono text-[10px] font-bold text-claret">已停用</span>}
+            {status && !status.has_auth && !banned && <span className="rounded-sm bg-brass/15 px-1.5 py-0.5 font-v4-mono text-[10px] font-bold text-brass">未啟用</span>}
+          </div>
+          <div className="mt-0.5 truncate font-v4-mono text-[11px] text-ink/55">{profile.email}</div>
+        </div>
+        <span className="font-v4-mono text-xs text-ink/55">{profile.rm_code ?? '—'}</span>
+        <InlineSelect<Role>
+          value={profile.role}
+          options={ROLE_OPTIONS}
+          onSave={onChangeRole}
+          isFixtures={isFixtures}
+          renderDisplay={(v) => <span className="font-v4-mono text-xs font-semibold text-ink">{v ? ROLE_LABEL[v] : '—'}</span>}
+        />
+        <InlineSelect<string>
+          value={profile.team_id}
+          options={teams.map((t) => ({ value: t.id, label: t.name }))}
+          onSave={onChangeTeam}
+          isFixtures={isFixtures}
+          renderDisplay={(v) => <span className="font-v4-mono text-xs text-ink/75">{teams.find((t) => t.id === v)?.name ?? '— 無'}</span>}
+        />
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={doGenLink}
+            disabled={busy !== null || isFixtures}
+            title="產生一次性登入連結"
+            className="grid h-7 w-7 place-items-center rounded-sm text-cobalt/70 transition hover:bg-cobalt/10 hover:text-cobalt disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy === 'link' ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <LinkIcon className="h-3.5 w-3.5" strokeWidth={2} />}
+          </button>
+          {banned ? (
+            <button
+              type="button"
+              onClick={doUnban}
+              disabled={busy !== null || isFixtures}
+              title="復原登入"
+              className="grid h-7 w-7 place-items-center rounded-sm text-forest/70 transition hover:bg-forest/10 hover:text-forest disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy === 'unban' ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={doBan}
+              disabled={busy !== null || isFixtures}
+              title="停用登入"
+              className="grid h-7 w-7 place-items-center rounded-sm text-ink/40 transition hover:bg-claret/10 hover:text-claret disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy === 'ban' ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <Ban className="h-3.5 w-3.5" strokeWidth={2} />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {link && (
+        <div className="grid gap-1.5 rounded-md border border-cobalt/25 bg-cobalt/5 p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="label-caps text-cobalt">一次性登入連結(複製給對方,連結進站即登入)</span>
+            <button
+              type="button"
+              onClick={() => setLink(null)}
+              className="font-v4-mono text-[10.5px] text-ink/45 hover:text-ink"
+            >關閉</button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              readOnly
+              value={link}
+              onFocus={(e) => e.currentTarget.select()}
+              className="flex-1 rounded-md border border-cobalt/20 bg-paper px-2.5 py-1.5 font-v4-mono text-xs text-ink/85 focus:border-cobalt/40 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={copyLink}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition',
+                linkCopied ? 'bg-forest text-paper' : 'bg-ink text-paper hover:bg-graphite',
+              )}
+            >
+              {linkCopied ? <Check className="h-3 w-3" strokeWidth={2.5} /> : <Copy className="h-3 w-3" strokeWidth={2} />}
+              {linkCopied ? '已複製' : '複製'}
+            </button>
+          </div>
+        </div>
+      )}
+      {linkErr && <div className="rounded-md border border-claret/30 bg-claret/5 px-2.5 py-1.5 text-xs text-claret">{linkErr}</div>}
+    </div>
   );
 }

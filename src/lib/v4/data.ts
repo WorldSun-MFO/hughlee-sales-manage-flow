@@ -108,6 +108,22 @@ export async function getSettings(): Promise<SettingsRow | null> {
   }
 }
 
+export type MemberStatusMap = Record<string, { has_auth: boolean; banned: boolean }>;
+
+export async function getMemberStatus(): Promise<MemberStatusMap> {
+  if (IS_DEMO) return {};
+  try {
+    const supabase = await createClient();
+    // admin_member_status RPC 內部會驗 admin,non-admin 會被擋(回空陣列或 error)
+    const { data, error } = await supabase.rpc('admin_member_status');
+    if (error) return {};
+    const rows = (data ?? []) as Array<{ id: string; has_auth: boolean; banned: boolean }>;
+    return Object.fromEntries(rows.map((r) => [r.id, { has_auth: r.has_auth, banned: r.banned }]));
+  } catch {
+    return {};
+  }
+}
+
 export async function getCurrentProfile(): Promise<import('./types').Profile | null> {
   if (IS_DEMO) return null;
   try {
