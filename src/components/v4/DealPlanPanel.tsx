@@ -11,11 +11,11 @@
 // ============================================================
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Wand2, Target, Sparkles, AlertTriangle, ListChecks, MessageSquare, Save, Check, Loader2 } from 'lucide-react';
+import { Calendar, Wand2, Target, Sparkles, AlertTriangle, ListChecks, MessageSquare, Save, Check, Loader2, ListTodo } from 'lucide-react';
 import type { Deal } from '@/lib/v4/types';
 import { fmtMoney, cn } from '@/lib/v4/utils';
 import { STAGES } from '@/lib/v4/constants';
-import { savePlan } from '@/lib/v4/mutations';
+import { savePlan, createTask } from '@/lib/v4/mutations';
 
 interface PlanStep {
   id: string;
@@ -238,12 +238,7 @@ function PlanResult({ plan, dealId, isFixtures }: { plan: DealPlan; dealId: stri
                     <Calendar className="inline h-2.5 w-2.5 mb-0.5 mr-1" strokeWidth={2} />{step.target_date}
                   </div>
                   {step.focus.length > 0 && (
-                    <div className="grid gap-1">
-                      <div className="label-caps text-ink/50 inline-flex items-center gap-1.5"><ListChecks className="h-2.5 w-2.5" strokeWidth={2} /> 核心動作</div>
-                      <ul className="grid gap-0.5">
-                        {step.focus.map((f, i) => <li key={i} className="flex items-start gap-2 text-xs text-ink/85"><span className="mt-1.5 grid h-1 w-1 shrink-0 rounded-full bg-forest" /><span>{f}</span></li>)}
-                      </ul>
-                    </div>
+                    <FocusList step={step} dealId={dealId} isFixtures={isFixtures} />
                   )}
                   {step.talking_points.length > 0 && (
                     <div className="grid gap-1">
@@ -268,6 +263,88 @@ function PlanResult({ plan, dealId, isFixtures }: { plan: DealPlan; dealId: stri
         </article>
       )}
     </section>
+  );
+}
+
+// ============================================================
+// FocusList — step.focus[] 加 checkbox + 升級為任務按鈕
+// ============================================================
+function FocusList({ step, dealId, isFixtures }: { step: PlanStep; dealId: string; isFixtures: boolean }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [picked, setPicked] = useState<boolean[]>(() => step.focus.map(() => true));
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const pickedCount = picked.filter(Boolean).length;
+
+  async function promote() {
+    if (busy || pickedCount === 0) return;
+    if (isFixtures) { setErr('fixtures 模式無法寫入'); return; }
+    setBusy(true); setErr(null);
+    try {
+      for (let i = 0; i < step.focus.length; i++) {
+        if (picked[i]) {
+          await createTask({
+            deal_id: dealId,
+            title: step.focus[i],
+            description: `(${step.stage_transition}) ${step.title}`,
+            due_date: step.target_date,
+            priority: 'normal',
+            status: 'todo',
+          });
+        }
+      }
+      setDone(true);
+      startTransition(() => router.refresh());
+      setTimeout(() => setDone(false), 2000);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="label-caps text-ink/50 inline-flex items-center gap-1.5"><ListChecks className="h-2.5 w-2.5" strokeWidth={2} /> 核心動作</div>
+        <button
+          type="button"
+          onClick={promote}
+          disabled={busy || done || pickedCount === 0}
+          className={cn(
+            'inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-v4-mono text-[10px] font-semibold transition',
+            done ? 'bg-forest text-paper' : 'border border-ink/15 bg-paper text-ink/75 hover:border-ink/30 hover:text-ink',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+          )}
+        >
+          {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2} /> : done ? <Check className="h-2.5 w-2.5" strokeWidth={2.5} /> : <ListTodo className="h-2.5 w-2.5" strokeWidth={2} />}
+          {busy ? '建立中…' : done ? '已建立' : `升級 ${pickedCount} 項為任務`}
+        </button>
+      </div>
+      <ul className="grid gap-0.5">
+        {step.focus.map((f, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs text-ink/85">
+            <button
+              type="button"
+              onClick={() => setPicked((p) => p.map((x, j) => j === i ? !x : x))}
+              disabled={isFixtures || busy}
+              className={cn(
+                'mt-1 grid h-3 w-3 shrink-0 place-items-center rounded-sm border transition',
+                picked[i] ? 'border-forest bg-forest text-paper' : 'border-ink/30 bg-paper hover:border-ink/50',
+              )}
+              aria-pressed={picked[i]}
+            >
+              {picked[i] && <Check className="h-2 w-2" strokeWidth={3} />}
+            </button>
+            <span className={cn('whitespace-pre-wrap', !picked[i] && 'opacity-50 line-through')}>{f}</span>
+          </li>
+        ))}
+      </ul>
+      {err && <div className="text-[11px] text-claret">{err}</div>}
+    </div>
   );
 }
 

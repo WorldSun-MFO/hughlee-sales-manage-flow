@@ -15,14 +15,14 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, Loader2, Phone, Send, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Calendar, Loader2, Phone, Send, Sparkles, TrendingUp, ListTodo as ListTodoIcon } from 'lucide-react';
 import type { Scores, Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { cn, contactOverdue, daysSince, fmtMoney, redFlag, totalScore, TIER_STYLES } from '@/lib/v4/utils';
 import { Drawer } from '@/components/v4/Drawer';
 import { DealAIPanel } from '@/components/v4/DealAIPanel';
 import { DealPlanPanel } from '@/components/v4/DealPlanPanel';
-import { addComment, markContacted, patchDeal, patchScores } from '@/lib/v4/mutations';
+import { addComment, createTask, markContacted, patchDeal, patchScores, splitNextStepIntoTasks } from '@/lib/v4/mutations';
 import { InlineText, InlineTextarea, InlineSelect, InlineDate, InlineScore } from '@/components/v4/InlineEdit';
 
 const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
@@ -110,6 +110,28 @@ export function ClientDetailView({
     }
   }
 
+  const [splitBusy, setSplitBusy] = useState(false);
+  const [splitMsg, setSplitMsg] = useState<string | null>(null);
+  async function handleSplitNextStep() {
+    if (!deal!.next_step || splitBusy) return;
+    if (isFixtures) { setSplitMsg('fixtures 模式無法寫入'); setTimeout(() => setSplitMsg(null), 2500); return; }
+    const titles = splitNextStepIntoTasks(deal!.next_step);
+    if (titles.length === 0) { setSplitMsg('下一步沒有可拆的內容'); setTimeout(() => setSplitMsg(null), 2500); return; }
+    setSplitBusy(true); setSplitMsg(null);
+    try {
+      for (const title of titles) {
+        await createTask({ deal_id: deal!.id, title, priority: 'normal', status: 'todo' });
+      }
+      setSplitMsg(`✓ 已新增 ${titles.length} 個任務`);
+      startTransition(() => router.refresh());
+      setTimeout(() => setSplitMsg(null), 2500);
+    } catch (err) {
+      setSplitMsg(`失敗:${(err as Error).message}`);
+    } finally {
+      setSplitBusy(false);
+    }
+  }
+
   return (
     <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
       <div>
@@ -185,7 +207,21 @@ export function ClientDetailView({
       </section>
 
       <section className="grid gap-3">
-        <div className="label-caps text-ink/55">下一步</div>
+        <div className="flex items-baseline justify-between">
+          <div className="label-caps text-ink/55">下一步</div>
+          {deal.next_step && (
+            <button
+              type="button"
+              onClick={handleSplitNextStep}
+              disabled={splitBusy || isFixtures}
+              title="把多行下一步拆成獨立任務"
+              className="inline-flex items-center gap-1.5 rounded-md border border-ink/15 bg-paper px-2.5 py-1 font-v4-mono text-[11px] font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {splitBusy ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> : <ListTodoIcon className="h-3 w-3" strokeWidth={2} />}
+              {splitBusy ? '建立中…' : '拆成任務'}
+            </button>
+          )}
+        </div>
         <div className="rounded-md border border-ink/10 bg-cream/60 p-4">
           <InlineTextarea
             value={deal.next_step}
@@ -196,6 +232,7 @@ export function ClientDetailView({
             displayClassName="font-v4-serif text-lg leading-relaxed text-ink"
           />
         </div>
+        {splitMsg && <div className="font-v4-mono text-[11px] text-ink/65">{splitMsg}</div>}
         <div className="flex items-center gap-2 font-v4-mono text-xs text-ink/55">
           <Calendar className="h-3 w-3" strokeWidth={2} />
           目標成交
