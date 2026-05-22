@@ -89,17 +89,26 @@ export async function setScoreNote(dealId: string, field: ScoreField, note: stri
 }
 
 // ---------- stage_checklist:勾掉 / 取消勾選 ----------
+// 沿用 ws_crm Dashboard 既有寫法:checked 為 false 時直接刪除 row,
+// checked 為 true 時 upsert
 export async function toggleChecklistItem(
-  dealId: string, stage: StageId, itemKey: string, done: boolean,
+  dealId: string, itemKey: string, checked: boolean,
 ): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase
-    .from('stage_checklist')
-    .upsert({
-      deal_id: dealId, stage, item_key: itemKey,
-      done, done_at: done ? new Date().toISOString() : null,
-    }, { onConflict: 'deal_id,stage,item_key' });
-  if (error) throw error;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!checked) {
+    const { error } = await supabase
+      .from('stage_checklist')
+      .delete()
+      .eq('deal_id', dealId)
+      .eq('item_key', itemKey);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('stage_checklist')
+      .upsert({ deal_id: dealId, item_key: itemKey, checked: true, checked_by: user?.id ?? null });
+    if (error) throw error;
+  }
 }
 
 // ---------- deal_questions:勾答案 + 補註 ----------

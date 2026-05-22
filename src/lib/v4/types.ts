@@ -41,10 +41,9 @@ export interface ScoreNote {
 
 export interface ChecklistItem {
   deal_id: string;
-  stage: StageId;
-  item_key: string;
-  done: boolean;
-  done_at?: string | null;
+  item_key: string;       // 例如 'l2_aum',包含 stage 前綴
+  checked: boolean;
+  checked_by?: string | null;
 }
 
 export interface DealQuestion {

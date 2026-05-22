@@ -15,17 +15,18 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, Loader2, Phone, Send, Sparkles, TrendingUp, ListTodo as ListTodoIcon } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, Loader2, Phone, Send, Sparkles, TrendingUp, ListTodo as ListTodoIcon } from 'lucide-react';
 import type { ScoreField, Scores, Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { cn, contactOverdue, daysSince, fmtMoney, redFlag, totalScore, TIER_STYLES } from '@/lib/v4/utils';
 import { Drawer } from '@/components/v4/Drawer';
 import { DealAIPanel } from '@/components/v4/DealAIPanel';
 import { DealPlanPanel } from '@/components/v4/DealPlanPanel';
-import { addComment, createTask, markContacted, patchDeal, patchScores, setScoreNote, splitNextStepIntoTasks } from '@/lib/v4/mutations';
+import { addComment, createTask, markContacted, patchDeal, patchScores, setScoreNote, splitNextStepIntoTasks, toggleChecklistItem, setDealQuestion } from '@/lib/v4/mutations';
 import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 import { AttachmentChip } from '@/components/v4/AttachmentTray';
-import { Paperclip } from 'lucide-react';
+import { Paperclip, ChevronRight as ChevronRightIcon, HelpCircle } from 'lucide-react';
+import { CHECKLIST, QUESTION_BANK } from '@/lib/constants';
 import { InlineText, InlineTextarea, InlineSelect, InlineDate, InlineScore } from '@/components/v4/InlineEdit';
 
 const MEDDIC_LABELS: Array<[keyof Scores, string, string]> = [
@@ -247,6 +248,9 @@ export function ClientDetailView({
         </div>
       </section>
 
+      {/* 階段推進 checklist */}
+      <StageChecklistSection deal={deal} isFixtures={isFixtures} onChanged={() => startTransition(() => router.refresh())} />
+
       <section className="grid gap-3">
         <div className="flex items-baseline justify-between">
           <div className="label-caps text-ink/55">MEDDIC 評分</div>
@@ -350,6 +354,9 @@ export function ClientDetailView({
         )}
       </section>
 
+      {/* 待澄清題目 */}
+      <DealQuestionsSection deal={deal} isFixtures={isFixtures} onChanged={() => startTransition(() => router.refresh())} />
+
       {(deal.deal_attachments?.length ?? 0) > 0 && (
         <section className="grid gap-3">
           <div className="label-caps text-ink/55 inline-flex items-center gap-2">
@@ -411,6 +418,212 @@ export function ClientDetailView({
         {drawer === 'ai' && <DealAIPanel deal={deal} isFixtures={isFixtures} />}
         {drawer === 'plan' && <DealPlanPanel deal={deal} isFixtures={isFixtures} />}
       </Drawer>
+    </div>
+  );
+}
+
+function StageChecklistSection({
+  deal, isFixtures, onChanged,
+}: {
+  deal: { id: string; stage: StageId; stage_checklist?: { item_key: string; checked: boolean }[] };
+  isFixtures: boolean;
+  onChanged: () => void;
+}) {
+  const items = CHECKLIST[deal.stage] ?? [];
+  if (items.length === 0) return null;
+  const checkedCount = items.filter((it) => deal.stage_checklist?.some((c) => c.item_key === it.key && c.checked)).length;
+  const allDone = checkedCount === items.length;
+  const nextStageIdx = ['L1','L2','L3','L4','L5','L6','L7'].indexOf(deal.stage) + 1;
+  const nextStage = (['L1','L2','L3','L4','L5','L6','L7'] as StageId[])[nextStageIdx];
+
+  return (
+    <section className="grid gap-3">
+      <div className="flex items-baseline justify-between">
+        <div className="label-caps text-ink/55">{deal.stage} → {nextStage ?? '—'} 推進 checklist</div>
+        <div className="font-v4-mono text-[11px] text-ink/55 numeric">
+          {checkedCount} / {items.length} {allDone && nextStage && '✓ 可推進'}
+        </div>
+      </div>
+      <ul className="grid gap-1 rounded-md border border-ink/10 bg-paper p-4">
+        {items.map((it) => {
+          const checked = deal.stage_checklist?.some((c) => c.item_key === it.key && c.checked) ?? false;
+          return (
+            <li key={it.key}>
+              <ChecklistRow dealId={deal.id} itemKey={it.key} label={it.label} checked={checked} isFixtures={isFixtures} onChanged={onChanged} />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function ChecklistRow({
+  dealId, itemKey, label, checked, isFixtures, onChanged,
+}: {
+  dealId: string; itemKey: string; label: string; checked: boolean; isFixtures: boolean; onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function toggle() {
+    if (busy || isFixtures) return;
+    setBusy(true);
+    try {
+      await toggleChecklistItem(dealId, itemKey, !checked);
+      onChanged();
+    } finally { setBusy(false); }
+  }
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={busy || isFixtures}
+      className="grid w-full grid-cols-[auto_1fr] items-start gap-2 rounded-sm px-1.5 py-1.5 text-left transition hover:bg-cream/40 disabled:cursor-not-allowed"
+    >
+      <span className={cn(
+        'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-sm border transition',
+        checked ? 'border-forest bg-forest text-paper' : 'border-ink/30 bg-paper',
+      )}>
+        {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2.5} /> : checked && <Check className="h-3 w-3" strokeWidth={3} />}
+      </span>
+      <span className={cn('text-sm leading-6', checked ? 'text-ink/55 line-through' : 'text-ink/85')}>{label}</span>
+    </button>
+  );
+}
+
+function DealQuestionsSection({
+  deal, isFixtures, onChanged,
+}: {
+  deal: { id: string; deal_questions?: { question_key: string; answered: boolean; note: string }[] };
+  isFixtures: boolean;
+  onChanged: () => void;
+}) {
+  // 從 QUESTION_BANK 拿到所有題目;只顯示已 ask 過的(deal_questions 表裡有 row 的)
+  const askedKeys = new Set((deal.deal_questions ?? []).map((q) => q.question_key));
+  if (askedKeys.size === 0) return null;
+  type BankItem = { key: string; q: string };
+  const allBank: Array<{ field: keyof typeof QUESTION_BANK; item: BankItem }> = [];
+  for (const [field, items] of Object.entries(QUESTION_BANK)) {
+    for (const it of items as BankItem[]) {
+      if (askedKeys.has(it.key)) allBank.push({ field: field as keyof typeof QUESTION_BANK, item: it });
+    }
+  }
+  if (allBank.length === 0) return null;
+
+  return (
+    <section className="grid gap-3">
+      <div className="flex items-baseline justify-between">
+        <div className="label-caps text-ink/55 inline-flex items-center gap-1.5">
+          <HelpCircle className="h-3 w-3" strokeWidth={2} /> 待澄清題目 · {allBank.length}
+        </div>
+        <div className="font-v4-mono text-[10.5px] text-ink/45">勾「已答」+ 補答案內容</div>
+      </div>
+      <ul className="grid gap-2 rounded-md border border-ink/10 bg-paper p-4">
+        {allBank.map(({ field, item }) => {
+          const row = (deal.deal_questions ?? []).find((q) => q.question_key === item.key);
+          return (
+            <li key={item.key}>
+              <QuestionRow
+                dealId={deal.id}
+                field={field}
+                item={item}
+                answered={row?.answered ?? false}
+                note={row?.note ?? ''}
+                isFixtures={isFixtures}
+                onChanged={onChanged}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function QuestionRow({
+  dealId, field, item, answered, note, isFixtures, onChanged,
+}: {
+  dealId: string;
+  field: string;
+  item: { key: string; q: string };
+  answered: boolean;
+  note: string;
+  isFixtures: boolean;
+  onChanged: () => void;
+}) {
+  const [draft, setDraft] = useState(note);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function toggleAnswered() {
+    if (busy || isFixtures) return;
+    setBusy(true);
+    try { await setDealQuestion(dealId, item.key, !answered, note); onChanged(); }
+    finally { setBusy(false); }
+  }
+  async function saveNote() {
+    if (busy || isFixtures) return;
+    if (draft.trim() === note.trim()) { setEditing(false); return; }
+    setBusy(true);
+    try { await setDealQuestion(dealId, item.key, answered, draft.trim()); setEditing(false); onChanged(); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="grid grid-cols-[auto_1fr_auto] items-start gap-3 border-t border-ink/8 pt-2 first:border-t-0 first:pt-0">
+      <button
+        type="button"
+        onClick={toggleAnswered}
+        disabled={busy || isFixtures}
+        className={cn(
+          'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-sm border transition',
+          answered ? 'border-forest bg-forest text-paper' : 'border-ink/30 bg-paper',
+        )}
+      >
+        {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2.5} /> : answered && <Check className="h-3 w-3" strokeWidth={3} />}
+      </button>
+      <div className="grid gap-1">
+        <div className="flex items-baseline gap-2">
+          <span className="font-v4-mono text-[10px] font-bold uppercase tracking-widest text-ink/55">{field}</span>
+          <span className={cn('text-sm leading-6', answered ? 'text-ink/55' : 'text-ink/85')}>{item.q}</span>
+        </div>
+        {editing ? (
+          <div className="grid gap-1">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={2}
+              autoFocus
+              disabled={busy}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveNote(); }
+                if (e.key === 'Escape') { setDraft(note); setEditing(false); }
+              }}
+              placeholder="客戶說了什麼?"
+              className="w-full resize-vertical rounded-sm border border-ink/25 bg-cream/40 px-2 py-1 text-xs leading-5 text-ink focus:border-ink/45 focus:outline-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => { setDraft(note); setEditing(false); }} className="text-[11px] text-ink/55 hover:text-ink">取消</button>
+              <button type="button" onClick={saveNote} disabled={busy} className="inline-flex items-center gap-1 rounded-sm bg-ink px-2 py-0.5 text-[11px] font-semibold text-paper hover:bg-graphite disabled:bg-ink/30">
+                {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2} /> : null}
+                儲存
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => !isFixtures && setEditing(true)}
+            disabled={isFixtures}
+            className="text-left"
+          >
+            {note ? (
+              <p className="text-xs leading-5 text-ink/65 whitespace-pre-wrap">{note}</p>
+            ) : (
+              !isFixtures && <span className="font-v4-mono text-[10px] text-ink/35 opacity-60 hover:opacity-100">+ 補答案</span>
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
