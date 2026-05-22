@@ -19,6 +19,8 @@ import { ArrowUp, ChevronRight, Sparkles, Lightbulb } from 'lucide-react';
 import type { Snapshot, Deal, StageId } from '@/lib/v4/types';
 import { fmtMoney, cn } from '@/lib/v4/utils';
 import { STAGES } from '@/lib/v4/constants';
+import { AttachmentTray } from '@/components/v4/AttachmentTray';
+import type { UploadedAttachment } from '@/lib/v4/upload';
 
 interface ScoreUpdate { field: string; old: number; new: number; reason: string }
 interface ParseResult {
@@ -52,6 +54,7 @@ export function AIChatView({ snapshot, base: _base = '/v4/workspace' }: { snapsh
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ParseResult | null>(null);
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
 
   const selectedDeal = activeDeals.find((d) => d.id === selectedId) ?? null;
   const isFixtures = snapshot.source === 'fixtures';
@@ -86,7 +89,7 @@ export function AIChatView({ snapshot, base: _base = '/v4/workspace' }: { snapsh
 
   return (
     <div className="mx-auto grid min-h-[calc(100vh-1px)] max-w-[1240px] grid-cols-1 gap-6 px-6 pb-10 pt-12 lg:grid-cols-[320px_1fr] lg:px-10">
-      <DealList deals={activeDeals} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setResult(null); setError(null); setText(''); }} />
+      <DealList deals={activeDeals} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setResult(null); setError(null); setText(''); setAttachments([]); }} />
 
       <main className="grid content-start gap-6">
         <header className="grid gap-2">
@@ -107,11 +110,19 @@ export function AIChatView({ snapshot, base: _base = '/v4/workspace' }: { snapsh
                   onChange={(e) => setText(e.target.value)}
                   rows={6}
                   placeholder="例如:今天下午打電話給陳先生,他說他考慮加碼到 300 萬美金,但太太還沒點頭。下週三要一起吃晚餐讓我見太太。他擔心銀行抽銀根..."
-                  className="w-full resize-vertical rounded-md border border-ink/12 bg-cream/40 px-3.5 py-3 text-[14px] leading-6 text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
+                  className="w-full resize-vertical rounded-md border border-ink/12 bg-cream/40 px-3.5 py-3 text-sm leading-6 text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
                   disabled={busy}
                 />
               </label>
-              <div className="flex items-center justify-between">
+
+              <AttachmentTray
+                dealId={selectedDeal.id}
+                isFixtures={isFixtures}
+                attachments={attachments}
+                onChange={setAttachments}
+              />
+
+              <div className="flex items-center justify-between border-t border-ink/8 pt-3">
                 <p className="font-v4-mono text-[10.5px] text-ink/45">
                   原話會寫入時間軸(is_raw),AI 摘要另存。Phase 2.3 再做 Apply 流程。
                 </p>

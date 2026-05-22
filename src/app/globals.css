@@ -28,6 +28,14 @@
  * 啟用方式:在 /v4/* 的 layout.tsx 把 <body> 內層裹 <div class="v4-root">
  * ============================================================ */
 
+/* 在有 v4-root 出現的頁面把根字體調大,讓 Tailwind 的 text-xs/sm/base/lg
+ * 等 rem 值全體等比放大(16 → 17.5,約 +9.4%)。
+ * :has() 已在現代瀏覽器(Chrome 105+/Safari 15.4+/Firefox 121+)支援。
+ * 非 v4 路由(/、/market、/mindmap...)沒有 .v4-root → html 仍是預設 16px。 */
+html:has(.v4-root) {
+  font-size: 17.5px;
+}
+
 .v4-root {
   --ink: #0e0d0c;
   --graphite: #1f1d1b;

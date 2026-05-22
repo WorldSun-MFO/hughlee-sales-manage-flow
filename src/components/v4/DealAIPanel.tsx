@@ -14,6 +14,8 @@ import { Sparkles, ArrowUp, Lightbulb } from 'lucide-react';
 import type { Deal, StageId } from '@/lib/v4/types';
 import { fmtMoney, cn } from '@/lib/v4/utils';
 import { STAGES } from '@/lib/v4/constants';
+import { AttachmentTray } from '@/components/v4/AttachmentTray';
+import type { UploadedAttachment } from '@/lib/v4/upload';
 
 interface ScoreUpdate { field: string; old: number; new: number; reason: string }
 interface ParseResult {
@@ -36,6 +38,7 @@ export function DealAIPanel({ deal, isFixtures }: { deal: Deal; isFixtures: bool
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ParseResult | null>(null);
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
 
   async function analyze() {
     if (!text.trim() || busy) return;
@@ -82,11 +85,19 @@ export function DealAIPanel({ deal, isFixtures }: { deal: Deal; isFixtures: bool
             onChange={(e) => setText(e.target.value)}
             rows={7}
             placeholder="例如:今天下午打電話給陳先生,他說他考慮加碼到 300 萬美金,但太太還沒點頭。下週三要一起吃晚餐讓我見太太。他擔心銀行抽銀根,問我宏利財摯宏耀有沒有 Margin Call 條款..."
-            className="w-full resize-vertical rounded-md border border-ink/12 bg-cream/40 px-3.5 py-3 text-[14px] leading-6 text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
+            className="w-full resize-vertical rounded-md border border-ink/12 bg-cream/40 px-3.5 py-3 text-sm leading-6 text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
             disabled={busy}
           />
         </label>
-        <div className="flex items-center justify-between">
+
+        <AttachmentTray
+          dealId={deal.id}
+          isFixtures={isFixtures}
+          attachments={attachments}
+          onChange={setAttachments}
+        />
+
+        <div className="flex items-center justify-between border-t border-ink/8 pt-3">
           <p className="font-v4-mono text-[10.5px] text-ink/45">原話會寫入時間軸,AI 摘要另存</p>
           <button
             type="button"
