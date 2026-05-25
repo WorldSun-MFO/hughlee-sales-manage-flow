@@ -123,7 +123,6 @@ function AppSettingsSection({ settings, isFixtures }: { settings: SettingsRow; i
       await updateSettings({
         stage_probs: { ...settings.stage_probs, [stage]: Math.max(0, Math.min(100, percent)) } as Record<StageId, number>,
       });
-      startTransition(() => router.refresh());
     } catch (e) { setErr((e as Error).message); }
     finally { setBusy(null); }
   }
@@ -132,7 +131,6 @@ function AppSettingsSection({ settings, isFixtures }: { settings: SettingsRow; i
     setBusy(`rf-${key}`); setErr(null);
     try {
       await updateSettings({ red_flag: { ...settings.red_flag, [key]: value } });
-      startTransition(() => router.refresh());
     } catch (e) { setErr((e as Error).message); }
     finally { setBusy(null); }
   }
@@ -241,7 +239,7 @@ function TeamsSection({ snapshot, isFixtures }: { snapshot: Snapshot; isFixtures
   async function add() {
     if (!newName.trim() || busy) return;
     setBusy(true); setErr(null);
-    try { await createTeam(newName.trim()); setNewName(''); startTransition(() => router.refresh()); }
+    try { await createTeam(newName.trim()); setNewName(''); }
     catch (e) { setErr((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -250,7 +248,7 @@ function TeamsSection({ snapshot, isFixtures }: { snapshot: Snapshot; isFixtures
     if (!team) return;
     if (!confirm(`刪除團隊「${team.name}」?成員的 team_id 會變 null,案件不受影響。`)) return;
     setDelBusyId(id);
-    try { await deleteTeam(id); startTransition(() => router.refresh()); }
+    try { await deleteTeam(id); }
     catch (e) { alert(`刪除失敗:${(e as Error).message}`); }
     finally { setDelBusyId(null); }
   }
@@ -269,7 +267,7 @@ function TeamsSection({ snapshot, isFixtures }: { snapshot: Snapshot; isFixtures
               <li key={t.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-ink/8 pb-2 last:border-b-0 last:pb-0">
                 <InlineText
                   value={t.name}
-                  onSave={async (next) => { await renameTeam(t.id, next); startTransition(() => router.refresh()); }}
+                  onSave={async (next) => { await renameTeam(t.id, next); }}
                   isFixtures={isFixtures}
                   displayClassName="font-v4-serif text-base font-semibold text-ink"
                 />
@@ -327,17 +325,17 @@ function MembersSection({
   async function changeRole(id: string, role: Role | null) {
     if (!role) return;
     setErr(null);
-    try { await patchProfile(id, { role }); startTransition(() => router.refresh()); }
+    try { await patchProfile(id, { role }); }
     catch (e) { setErr((e as Error).message); }
   }
   async function changeTeam(id: string, teamId: string | null) {
     setErr(null);
-    try { await patchProfile(id, { team_id: teamId || null }); startTransition(() => router.refresh()); }
+    try { await patchProfile(id, { team_id: teamId || null }); }
     catch (e) { setErr((e as Error).message); }
   }
   async function changeName(id: string, name: string) {
     setErr(null);
-    try { await patchProfile(id, { full_name: name }); startTransition(() => router.refresh()); }
+    try { await patchProfile(id, { full_name: name }); }
     catch (e) { setErr((e as Error).message); }
   }
 
@@ -359,7 +357,7 @@ function MembersSection({
                 onChangeName={(v) => changeName(p.id, v)}
                 onChangeRole={(v) => changeRole(p.id, v)}
                 onChangeTeam={(v) => changeTeam(p.id, v)}
-                onChanged={() => startTransition(() => router.refresh())}
+                onChanged={() => undefined}
               />
             </li>
           ))}

@@ -173,7 +173,6 @@ function ParseResultPanel({
       if (pickComment && result.new_comment) await addComment(dealId, result.new_comment, { isRaw: false });
 
       setDone(true);
-      startTransition(() => router.refresh());
       setTimeout(() => { setDone(false); onApplied(); }, 1500);
     } catch (err) {
       setError((err as Error).message);

@@ -1,30 +1,26 @@
 'use client';
 
 // ============================================================
-// V4 Realtime 同步器 — 訂閱 Supabase Realtime,有變動就 router.refresh()
+// V4 Realtime 同步器 — v4.2:預設停用
 // ============================================================
-// 沿用 ws_crm 既有 useRealtimeSync.ts 的訂閱策略,只是把「重抓 + 局部更新」
-// 改成「整頁 router.refresh()」 — 因為 v4 用 Next.js server component +
-// inline edit + router.refresh 模式,refresh 會重跑 server data fetch,
-// UI 自動拿到新狀態,不需要本地手動 merge。
+// 為什麼停用:
+//   v4.1 改成 fire-and-forget 後,使用者點按鈕本地 state 立刻翻面。
+//   但這個元件仍訂閱 Supabase Realtime,DB 一變(包括自己剛寫的)
+//   就 router.refresh() → 700ms 整頁 server fetch + middleware re-auth
+//   → 偶發 redirect /login。
 //
-// 訂閱 7 個表:
-//   - deals       (新增 / 編輯 / 刪除案件)
-//   - scores      (MEDDIC 分數)
-//   - score_notes (分數理由)
-//   - stage_checklist (推進閘 checklist)
-//   - deal_questions  (待澄清題目)
-//   - tasks       (任務 CRUD)
-//   - comments    (時間軸 / AI 摘要)
+//   既然單人開發、沒有「別人改我立刻看到」的剛性需求,先預設停用。
+//   多人協作時把 ENABLED 改 true,並考慮加上「只 refresh 別人寫的」
+//   的過濾(取得 payload.commit_timestamp 比對自己寫入時間之類)。
 //
-// 用法:在 view component 內 <RealtimeRefresher />,渲染 null,完全不佔位。
-// 也可以 props 限縮要監聽的表(例如 ClientDetailView 不需要 tasks 以外的全部)。
-//
-// ⚠️ fixtures 模式不訂閱(沒登入,Supabase realtime 連不上)
+// 如何重新啟用:把 ENABLED 改 true,或刪掉這個 early-return。
+// 用法 API 不變,既有頁面繼續 import 它。
 // ============================================================
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+
+const ENABLED = false; // ← 改 true 即開啟
 
 const DEFAULT_TABLES = [
   'deals',
@@ -47,13 +43,13 @@ export function RealtimeRefresher({
   const key = tables.join(',');
 
   useEffect(() => {
+    if (!ENABLED) return;
     if (isFixtures) return;
     const supabase = createClient();
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     function scheduleRefresh() {
       if (debounceTimer) clearTimeout(debounceTimer);
-      // 短時間(300ms)內多筆變動合併成一次 refresh,避免 burst 連 5 次 server fetch
       debounceTimer = setTimeout(() => { router.refresh(); }, 300);
     }
 

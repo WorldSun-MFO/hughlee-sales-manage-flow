@@ -11,7 +11,7 @@
 // 再做。這版只負責「給 RM 立刻能用的話術」。
 // ============================================================
 import { useState } from 'react';
-import { Briefcase, Sparkles, Wand2, Loader2, AlertTriangle } from 'lucide-react';
+import { Briefcase, Sparkles, Wand2, Loader2, AlertTriangle, Check, X } from 'lucide-react';
 import { cn } from '@/lib/v4/utils';
 
 interface TalkingPoint {
@@ -100,28 +100,7 @@ export function DealAmmoSection({ dealId, isFixtures }: { dealId: string; isFixt
           {data.talking_points.length > 0 && (
             <ol className="grid gap-2">
               {data.talking_points.map((tp, idx) => (
-                <li key={tp.intel_id + idx} className="grid grid-cols-[auto_1fr] items-start gap-3 rounded-md border border-ink/10 bg-paper p-4">
-                  <div className="grid h-8 w-8 place-items-center rounded-md bg-cobalt/10 font-v4-serif text-base font-semibold text-cobalt numeric">{idx + 1}</div>
-                  <div className="grid gap-2">
-                    <div className="grid gap-0.5">
-                      <div className="text-sm font-semibold text-ink">{tp.hook}</div>
-                      <div className="font-v4-mono text-[11px] text-ink/55">{tp.angle}</div>
-                    </div>
-                    <div className="rounded-sm border border-forest/20 bg-forest/5 px-3 py-2">
-                      <div className="label-caps mb-1 text-forest/80">開場話術(可直接複製)</div>
-                      <pre className="whitespace-pre-wrap font-v4-sans text-sm leading-6 text-ink/85">{tp.opener}</pre>
-                    </div>
-                    {tp.caution && (
-                      <div className="grid grid-cols-[auto_1fr] items-start gap-1.5 rounded-sm border border-claret/20 bg-claret/5 px-2.5 py-1.5">
-                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-claret" strokeWidth={2} />
-                        <span className="text-xs leading-5 text-claret">{tp.caution}</span>
-                      </div>
-                    )}
-                    <div className="font-v4-mono text-[10.5px] text-ink/45">
-                      來源:{tp.intel_title}
-                    </div>
-                  </div>
-                </li>
+                <TalkingPointCard key={tp.intel_id + idx} tp={tp} idx={idx} dealId={dealId} isFixtures={isFixtures} />
               ))}
             </ol>
           )}
@@ -137,5 +116,80 @@ export function DealAmmoSection({ dealId, isFixtures }: { dealId: string; isFixt
         </div>
       )}
     </section>
+  );
+}
+
+// ============================================================
+// 單一 talking_point 卡 — 含「採納關聯」按鈕(對應原 ClientAmmoCard 功能)
+// ============================================================
+function TalkingPointCard({
+  tp, idx, dealId, isFixtures,
+}: {
+  tp: TalkingPoint;
+  idx: number;
+  dealId: string;
+  isFixtures: boolean;
+}) {
+  const [linkState, setLinkState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
+  const [linkErr, setLinkErr] = useState<string | null>(null);
+
+  async function accept() {
+    if (isFixtures || linkState === 'busy' || linkState === 'done') return;
+    setLinkState('busy'); setLinkErr(null);
+    try {
+      const { linkIntelToDeal } = await import('@/lib/v4/mutations');
+      // reason 帶 AI hook + angle 簡述,review 時看得到關聯理由
+      await linkIntelToDeal(tp.intel_id, dealId, `${tp.hook} — ${tp.angle}`.slice(0, 280));
+      setLinkState('done');
+    } catch (e) {
+      setLinkErr((e as Error).message);
+      setLinkState('error');
+    }
+  }
+
+  return (
+    <li className="grid grid-cols-[auto_1fr_auto] items-start gap-3 rounded-md border border-ink/10 bg-paper p-4">
+      <div className="grid h-8 w-8 place-items-center rounded-md bg-cobalt/10 font-v4-serif text-base font-semibold text-cobalt numeric">{idx + 1}</div>
+      <div className="grid gap-2 min-w-0">
+        <div className="grid gap-0.5">
+          <div className="text-sm font-semibold text-ink">{tp.hook}</div>
+          <div className="font-v4-mono text-[11px] text-ink/55">{tp.angle}</div>
+        </div>
+        <div className="rounded-sm border border-forest/20 bg-forest/5 px-3 py-2">
+          <div className="label-caps mb-1 text-forest/80">開場話術(可直接複製)</div>
+          <pre className="whitespace-pre-wrap font-v4-sans text-sm leading-6 text-ink/85">{tp.opener}</pre>
+        </div>
+        {tp.caution && (
+          <div className="grid grid-cols-[auto_1fr] items-start gap-1.5 rounded-sm border border-claret/20 bg-claret/5 px-2.5 py-1.5">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-claret" strokeWidth={2} />
+            <span className="text-xs leading-5 text-claret">{tp.caution}</span>
+          </div>
+        )}
+        <div className="font-v4-mono text-[10.5px] text-ink/45">
+          來源:{tp.intel_title}
+        </div>
+        {linkErr && <div className="text-[11px] text-claret">{linkErr}</div>}
+      </div>
+      <button
+        type="button"
+        onClick={accept}
+        disabled={isFixtures || linkState === 'busy' || linkState === 'done'}
+        title={linkState === 'done' ? '已關聯到本案件' : '把這篇 intel 正式關聯到本案件(寫入 intel_deal_links)'}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition shrink-0',
+          linkState === 'done'
+            ? 'border-forest bg-forest text-paper cursor-default'
+            : linkState === 'error'
+              ? 'border-claret/40 bg-claret/5 text-claret'
+              : 'border-forest/40 bg-forest/8 text-forest hover:bg-forest/15',
+          isFixtures && 'cursor-not-allowed opacity-50',
+        )}
+      >
+        {linkState === 'busy' ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+          : linkState === 'done' ? <Check className="h-3 w-3" strokeWidth={2.5} />
+          : <Sparkles className="h-3 w-3" strokeWidth={2} />}
+        {linkState === 'done' ? '已採納' : linkState === 'error' ? '再試' : '採納關聯'}
+      </button>
+    </li>
   );
 }

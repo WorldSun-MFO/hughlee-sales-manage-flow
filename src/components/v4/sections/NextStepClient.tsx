@@ -13,7 +13,7 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
   const [, startTransition] = useTransition();
   const [splitBusy, setSplitBusy] = useState(false);
   const [splitMsg, setSplitMsg] = useState<string | null>(null);
-  const refresh = () => startTransition(() => router.refresh());
+  const refresh = () => undefined; // fire-and-forget;不再 router.refresh,改靠本地 optimistic state
 
   async function handleSplit() {
     if (!deal.next_step || splitBusy) return;

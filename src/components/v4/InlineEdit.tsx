@@ -1,15 +1,18 @@
 'use client';
 
 // ============================================================
-// Inline edit 元件群 — ClientDetailView Sprint B 用
+// Inline edit 元件群 — v4.2 樂觀修改版
 // ============================================================
-// 設計原則:
-//   - 預設「展示模式」看起來像普通文字,hover 時露出邊框暗示可編
-//   - 點擊進入「編輯模式」,失焦或 Enter 保存(textarea 用 Cmd/Ctrl+Enter)
-//   - Esc 取消
-//   - 保存中顯示 spinner,完成後立刻回展示模式
-//   - 失敗顯示紅字錯誤,值回到原本
-//   - fixtures 模式整個元件 read-only
+// 行為改變:
+//   v4.1: commit() 是 await → 等 DB 回來才退出編輯模式 + 顯示 = prop value
+//         (因為沒有 router.refresh,顯示永遠是「上一次 server 給的舊值」)
+//   v4.2: commit() 立刻退出編輯模式 + shadow 立刻設成新值;
+//         DB 寫入背景跑(fire-and-forget),失敗才回滾 shadow + 顯示錯誤
+//
+//   shadow = 「我目前該顯示的值」,優先 trust 自己的編輯
+//   prop value 變動時(例如其他 view 改了 / realtime 推回)同步 shadow
+//
+// 5 個元件:InlineText / InlineTextarea / InlineSelect / InlineDate / InlineScore
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Pencil, X } from 'lucide-react';
@@ -29,46 +32,48 @@ export function InlineText({
   displayClassName?: string;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const [shadow, setShadow] = useState(value);   // 樂觀顯示值
+  const [draft, setDraft] = useState(value);     // 編輯中的暫存
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setDraft(value); }, [value]);
+  // prop 變動時(外部 fresh data)同步 shadow + draft
+  useEffect(() => { setShadow(value); setDraft(value); }, [value]);
   useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
 
-  async function commit() {
+  function commit() {
     const next = draft.trim();
-    if (next === value) { setEditing(false); return; }
+    if (next === shadow) { setEditing(false); return; }
+    // 樂觀:立刻把 shadow 換成新值,退出編輯模式
+    setShadow(next);
+    setEditing(false);
     setBusy(true); setErr(null);
-    try { await onSave(next); setEditing(false); }
-    catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); }
+    onSave(next)
+      .catch((e) => { setShadow(value); setDraft(value); setErr((e as Error).message); })
+      .finally(() => setBusy(false));
   }
 
   if (!editing) {
     return (
       <DisplayShell isFixtures={isFixtures} onEdit={() => setEditing(true)} className={cn('block', className)}>
-        <span className={cn('text-ink', !value && 'italic text-ink/45', displayClassName)}>{value || (placeholder ?? '—')}</span>
+        <span className={cn('text-ink', !shadow && 'italic text-ink/45', displayClassName)}>{shadow || (placeholder ?? '—')}</span>
+        {busy && <Loader2 className="absolute right-7 top-2 h-3 w-3 animate-spin text-ink/40" strokeWidth={2} />}
+        {err && <div className="text-[11px] text-claret">{err}</div>}
       </DisplayShell>
     );
   }
   return (
     <div className={cn('grid gap-1', className)}>
-      <div className="flex items-center gap-2">
-        <input
-          ref={inputRef}
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value); setEditing(false); } }}
-          onBlur={commit}
-          disabled={busy}
-          className="flex-1 rounded-md border border-ink/30 bg-cream/40 px-2.5 py-1.5 text-sm text-ink focus:border-ink/50 focus:outline-none"
-        />
-        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-ink/55" strokeWidth={2} />}
-      </div>
-      {err && <div className="text-[11px] text-claret">{err}</div>}
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(shadow); setEditing(false); } }}
+        onBlur={commit}
+        className="rounded-md border border-ink/30 bg-cream/40 px-2.5 py-1.5 text-sm text-ink focus:border-ink/50 focus:outline-none"
+      />
     </div>
   );
 }
@@ -86,30 +91,35 @@ export function InlineTextarea({
   displayClassName?: string;
 }) {
   const [editing, setEditing] = useState(false);
+  const [shadow, setShadow] = useState<string | null>(value);
   const [draft, setDraft] = useState(value ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { setDraft(value ?? ''); }, [value]);
+  useEffect(() => { setShadow(value); setDraft(value ?? ''); }, [value]);
   useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
 
-  async function commit() {
-    const next = draft.trim();
-    if ((next || null) === (value ?? null)) { setEditing(false); return; }
+  function commit() {
+    const next = draft.trim() || null;
+    if (next === shadow) { setEditing(false); return; }
+    setShadow(next);
+    setEditing(false);
     setBusy(true); setErr(null);
-    try { await onSave(next || null); setEditing(false); }
-    catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); }
+    onSave(next)
+      .catch((e) => { setShadow(value); setDraft(value ?? ''); setErr((e as Error).message); })
+      .finally(() => setBusy(false));
   }
-  function cancel() { setDraft(value ?? ''); setEditing(false); setErr(null); }
+  function cancel() { setDraft(shadow ?? ''); setEditing(false); setErr(null); }
 
   if (!editing) {
     return (
       <DisplayShell isFixtures={isFixtures} onEdit={() => setEditing(true)} className={className}>
-        <div className={cn('whitespace-pre-wrap text-ink', !value && 'italic text-ink/45', displayClassName)}>
-          {value || (placeholder ?? '—')}
+        <div className={cn('whitespace-pre-wrap text-ink', !shadow && 'italic text-ink/45', displayClassName)}>
+          {shadow || (placeholder ?? '—')}
         </div>
+        {busy && <Loader2 className="absolute right-7 top-2 h-3 w-3 animate-spin text-ink/40" strokeWidth={2} />}
+        {err && <div className="text-[11px] text-claret">{err}</div>}
       </DisplayShell>
     );
   }
@@ -124,16 +134,14 @@ export function InlineTextarea({
           if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         }}
         rows={rows}
-        disabled={busy}
         className="w-full resize-vertical rounded-md border border-ink/30 bg-cream/40 px-3 py-2 text-sm leading-6 text-ink focus:border-ink/50 focus:outline-none"
       />
       <div className="flex items-center justify-end gap-2">
-        {err && <span className="mr-auto text-[11px] text-claret">{err}</span>}
-        <button type="button" onClick={cancel} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-ink/15 bg-paper px-2.5 py-1 text-xs text-ink/65 hover:border-ink/30">
+        <button type="button" onClick={cancel} className="inline-flex items-center gap-1 rounded-md border border-ink/15 bg-paper px-2.5 py-1 text-xs text-ink/65 hover:border-ink/30">
           <X className="h-3 w-3" strokeWidth={2} /> 取消
         </button>
-        <button type="button" onClick={commit} disabled={busy} className="inline-flex items-center gap-1 rounded-md bg-ink px-2.5 py-1 text-xs font-semibold text-paper hover:bg-graphite disabled:bg-ink/30">
-          {busy ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> : <Check className="h-3 w-3" strokeWidth={2} />} 儲存
+        <button type="button" onClick={commit} className="inline-flex items-center gap-1 rounded-md bg-ink px-2.5 py-1 text-xs font-semibold text-paper hover:bg-graphite">
+          <Check className="h-3 w-3" strokeWidth={2} /> 儲存
         </button>
       </div>
       <div className="font-v4-mono text-[10.5px] text-ink/45">Cmd/Ctrl + Enter 儲存 · Esc 取消</div>
@@ -152,10 +160,13 @@ export function InlineSelect<T extends string>({
   renderDisplay?: (v: T | null) => React.ReactNode;
   className?: string;
 }) {
+  const [shadow, setShadow] = useState<T | null>(value);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const selfRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setShadow(value); }, [value]);
 
   useEffect(() => {
     if (!open) return;
@@ -166,28 +177,29 @@ export function InlineSelect<T extends string>({
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
 
-  async function pick(next: T | null) {
+  function pick(next: T | null) {
     setOpen(false);
-    if (next === value) return;
+    if (next === shadow) return;
+    setShadow(next);  // 樂觀
     setBusy(true); setErr(null);
-    try { await onSave(next); }
-    catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); }
+    onSave(next)
+      .catch((e) => { setShadow(value); setErr((e as Error).message); })
+      .finally(() => setBusy(false));
   }
 
   return (
     <div ref={selfRef} className={cn('relative inline-flex flex-col gap-1', className)}>
       <button
         type="button"
-        onClick={() => !isFixtures && !busy && setOpen((v) => !v)}
-        disabled={isFixtures || busy}
+        onClick={() => !isFixtures && setOpen((v) => !v)}
+        disabled={isFixtures}
         className={cn(
           'group inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm transition hover:border-ink/15 hover:bg-cream/40',
           isFixtures && 'cursor-not-allowed opacity-70',
         )}
       >
-        {renderDisplay ? renderDisplay(value) : <span className="font-v4-mono font-semibold text-ink">{options.find((o) => o.value === value)?.label ?? '—'}</span>}
-        {busy ? <Loader2 className="h-3 w-3 animate-spin text-ink/55" strokeWidth={2} /> : !isFixtures && <Pencil className="h-3 w-3 text-ink/30 opacity-0 transition group-hover:opacity-100" strokeWidth={2} />}
+        {renderDisplay ? renderDisplay(shadow) : <span className="font-v4-mono font-semibold text-ink">{options.find((o) => o.value === shadow)?.label ?? '—'}</span>}
+        {busy ? <Loader2 className="h-3 w-3 animate-spin text-ink/40" strokeWidth={2} /> : !isFixtures && <Pencil className="h-3 w-3 text-ink/30 opacity-0 transition group-hover:opacity-100" strokeWidth={2} />}
       </button>
       {open && (
         <ul className="absolute left-0 top-full z-10 mt-1 grid min-w-[180px] gap-0.5 rounded-md border border-ink/15 bg-paper p-1 shadow-panel">
@@ -198,7 +210,7 @@ export function InlineSelect<T extends string>({
                 onClick={() => pick(o.value)}
                 className={cn(
                   'flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm transition',
-                  o.value === value ? 'bg-ink text-paper' : 'text-ink hover:bg-cream/60',
+                  o.value === shadow ? 'bg-ink text-paper' : 'text-ink hover:bg-cream/60',
                 )}
               >
                 {o.label}
@@ -222,24 +234,30 @@ export function InlineDate({
   className?: string;
 }) {
   const [editing, setEditing] = useState(false);
+  const [shadow, setShadow] = useState<string | null>(value);
   const [draft, setDraft] = useState(value ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => { setDraft(value ?? ''); }, [value]);
+  useEffect(() => { setShadow(value); setDraft(value ?? ''); }, [value]);
 
-  async function commit(next: string) {
-    if ((next || null) === (value ?? null)) { setEditing(false); return; }
+  function commit(next: string) {
+    const nextVal = next || null;
+    if (nextVal === shadow) { setEditing(false); return; }
+    setShadow(nextVal);
+    setEditing(false);
     setBusy(true); setErr(null);
-    try { await onSave(next || null); setEditing(false); }
-    catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); }
+    onSave(nextVal)
+      .catch((e) => { setShadow(value); setDraft(value ?? ''); setErr((e as Error).message); })
+      .finally(() => setBusy(false));
   }
 
   if (!editing) {
     return (
       <DisplayShell isFixtures={isFixtures} onEdit={() => setEditing(true)} className={className}>
-        <span className={cn('font-v4-mono text-ink numeric', !value && 'italic text-ink/45')}>{value || '未設定'}</span>
+        <span className={cn('font-v4-mono text-ink numeric', !shadow && 'italic text-ink/45')}>{shadow || '未設定'}</span>
+        {busy && <Loader2 className="absolute right-7 top-2 h-3 w-3 animate-spin text-ink/40" strokeWidth={2} />}
+        {err && <div className="text-[11px] text-claret">{err}</div>}
       </DisplayShell>
     );
   }
@@ -252,13 +270,10 @@ export function InlineDate({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => commit(draft)}
           autoFocus
-          disabled={busy}
           className="rounded-md border border-ink/30 bg-cream/40 px-2.5 py-1 font-v4-mono text-sm text-ink focus:border-ink/50 focus:outline-none"
         />
-        <button type="button" onClick={() => commit('')} disabled={busy} className="text-xs text-ink/55 hover:text-claret">清除</button>
-        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-ink/55" strokeWidth={2} />}
+        <button type="button" onClick={() => commit('')} className="text-xs text-ink/55 hover:text-claret">清除</button>
       </div>
-      {err && <div className="text-[11px] text-claret">{err}</div>}
     </div>
   );
 }
@@ -272,21 +287,24 @@ export function InlineScore({
   isFixtures: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [shadow, setShadow] = useState(value);
   const [draft, setDraft] = useState(String(value));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setDraft(String(value)); }, [value]);
+  useEffect(() => { setShadow(value); setDraft(String(value)); }, [value]);
   useEffect(() => { if (editing) { ref.current?.focus(); ref.current?.select(); } }, [editing]);
 
-  async function commit() {
+  function commit() {
     const n = Math.max(0, Math.min(10, Math.round(Number(draft))));
-    if (Number.isNaN(n) || n === value) { setEditing(false); setDraft(String(value)); return; }
+    if (Number.isNaN(n) || n === shadow) { setEditing(false); setDraft(String(shadow)); return; }
+    setShadow(n);
+    setEditing(false);
     setBusy(true); setErr(null);
-    try { await onSave(n); setEditing(false); }
-    catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); }
+    onSave(n)
+      .catch((e) => { setShadow(value); setDraft(String(value)); setErr((e as Error).message); })
+      .finally(() => setBusy(false));
   }
 
   if (!editing) {
@@ -296,13 +314,14 @@ export function InlineScore({
         onClick={() => !isFixtures && setEditing(true)}
         disabled={isFixtures}
         className={cn(
-          'font-v4-mono text-sm font-semibold text-ink numeric tabular-nums',
+          'font-v4-mono text-sm font-semibold text-ink numeric tabular-nums relative',
           !isFixtures && 'rounded-sm px-1.5 py-0.5 transition hover:bg-cream/60 hover:ring-1 hover:ring-ink/20',
           isFixtures && 'cursor-not-allowed',
         )}
-        title={isFixtures ? 'fixtures 模式無法編輯' : '點擊修改'}
+        title={err ?? (isFixtures ? 'fixtures 模式無法編輯' : '點擊修改')}
       >
-        {value}
+        {shadow}
+        {busy && <Loader2 className="ml-1 inline h-2.5 w-2.5 animate-spin text-ink/40" strokeWidth={2} />}
       </button>
     );
   }
@@ -317,12 +336,9 @@ export function InlineScore({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
-        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(String(value)); setEditing(false); } }}
-        disabled={busy}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(String(shadow)); setEditing(false); } }}
         className="w-14 rounded-md border border-ink/30 bg-cream/40 px-1.5 py-0.5 font-v4-mono text-sm font-semibold text-ink focus:border-ink/50 focus:outline-none"
       />
-      {busy && <Loader2 className="h-3 w-3 animate-spin text-ink/55" strokeWidth={2} />}
-      {err && <span className="text-[10px] text-claret">{err}</span>}
     </div>
   );
 }

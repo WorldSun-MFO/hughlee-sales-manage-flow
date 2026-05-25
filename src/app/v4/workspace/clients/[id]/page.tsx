@@ -5,6 +5,11 @@
 //   - 抓 deal core(單列,快)→ 阻塞渲染,Shell + Header 立刻就位
 //   - 其他 sections 各自包 Suspense,各跑各的並行 fetch
 //   - 任一 section 慢都不會擋 header 顯示,使用者可以馬上互動
+//
+// 區塊由上到下:
+//   Header / Alerts / Stats / StagePrompt / NextStep / LastContact
+//   / SavedPlan / Checklist / Scores / Questions / DealAmmo / PainMatrix
+//   / Attachments / Comments / RawTranscript / Tasks / DeleteDealButton
 // ============================================================
 import { Suspense } from 'react';
 import Link from 'next/link';
@@ -15,13 +20,19 @@ import { ClientDetailShell } from '@/components/v4/sections/Shell';
 import { HeaderClient } from '@/components/v4/sections/HeaderClient';
 import { NextStepClient } from '@/components/v4/sections/NextStepClient';
 import { StatsRow, AlertsRow } from '@/components/v4/sections/StatsRow';
+import { StagePromptSection } from '@/components/v4/sections/StagePromptSection';
+import { LastContactSection } from '@/components/v4/sections/LastContactSection';
+import { SavedPlanSection } from '@/components/v4/sections/SavedPlanSection';
 import { ChecklistSection } from '@/components/v4/sections/ChecklistSection';
 import { QuestionsSection } from '@/components/v4/sections/QuestionsSection';
 import { ScoresSection } from '@/components/v4/sections/ScoresSection';
+import { PainMatrixSection } from '@/components/v4/sections/PainMatrixSection';
 import { CommentsSection } from '@/components/v4/sections/CommentsSection';
+import { RawTranscriptSection } from '@/components/v4/sections/RawTranscriptSection';
 import { TasksSection } from '@/components/v4/sections/TasksSection';
 import { AttachmentsSection } from '@/components/v4/sections/AttachmentsSection';
 import { DealAmmoSection } from '@/components/v4/DealAmmoSection';
+import { DeleteDealButton } from '@/components/v4/sections/DeleteDealButton';
 import {
   ChecklistSkeleton, ScoresSkeleton, CommentsSkeleton, TasksSkeleton,
   AttachmentsSkeleton, AmmoSkeleton,
@@ -57,7 +68,13 @@ export default async function WorkspaceClientDetailPage(
       <HeaderClient deal={deal} isFixtures={isFixtures} />
       <AlertsRow deal={deal} tierConfig={tierConfig} />
       <StatsRow deal={deal} />
+      <StagePromptSection stage={deal.stage} />
       <NextStepClient deal={deal} isFixtures={isFixtures} />
+      <LastContactSection deal={deal} tierConfig={tierConfig} isFixtures={isFixtures} />
+
+      <Suspense fallback={null}>
+        <SavedPlanSection dealId={id} isFixtures={isFixtures} />
+      </Suspense>
 
       <Suspense fallback={<ChecklistSkeleton />}>
         <ChecklistSection dealId={id} stage={deal.stage} isFixtures={isFixtures} />
@@ -75,6 +92,10 @@ export default async function WorkspaceClientDetailPage(
         <DealAmmoSection dealId={id} isFixtures={isFixtures} />
       </Suspense>
 
+      <Suspense fallback={null}>
+        <PainMatrixSection />
+      </Suspense>
+
       <Suspense fallback={<AttachmentsSkeleton />}>
         <AttachmentsSection dealId={id} />
       </Suspense>
@@ -83,9 +104,15 @@ export default async function WorkspaceClientDetailPage(
         <CommentsSection dealId={id} isFixtures={isFixtures} />
       </Suspense>
 
+      <Suspense fallback={null}>
+        <RawTranscriptSection dealId={id} />
+      </Suspense>
+
       <Suspense fallback={<TasksSkeleton />}>
         <TasksSection dealId={id} base="/v4/workspace" isFixtures={isFixtures} />
       </Suspense>
+
+      <DeleteDealButton dealId={id} dealName={deal.name} base="/v4/workspace" isFixtures={isFixtures} />
     </ClientDetailShell>
   );
 }

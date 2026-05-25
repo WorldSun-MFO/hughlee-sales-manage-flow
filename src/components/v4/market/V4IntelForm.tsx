@@ -130,7 +130,6 @@ export function V4IntelForm({
       if (!res.ok) { setError(json.error ?? '儲存失敗'); setSaving(false); return; }
       const id = mode === 'create' ? json.data.id : initial!.id;
       router.push(`/market/${id}` as never);
-      router.refresh();
     } catch { setError('網路錯誤,請再試一次'); setSaving(false); }
   }
 

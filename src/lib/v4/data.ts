@@ -130,6 +130,31 @@ export const getDealAttachments = cache(async (dealId: string): Promise<DealAtta
   return (data as DealAttachment[] | null) ?? [];
 });
 
+// 為圖片附檔預先產 signed URL,讓客戶詳情頁可以直接 <img> 顯示縮圖
+export const getAttachmentImageUrls = cache(async (atts: DealAttachment[]): Promise<Record<string, string>> => {
+  const supabase = await getAuthed();
+  if (!supabase) return {};
+  const out: Record<string, string> = {};
+  const imageAtts = atts.filter((a) => a.mime_type.startsWith('image/'));
+  await Promise.all(imageAtts.map(async (a) => {
+    const { data } = await supabase.storage.from('deal-attachments').createSignedUrl(a.storage_path, 3600);
+    if (data?.signedUrl) out[a.id] = data.signedUrl;
+  }));
+  return out;
+});
+
+// pain_points 表(admin 在 SettingsModal 維護的痛點 → 商品配對)
+export const getPainPoints = cache(async (): Promise<import('./types').PainPoint[]> => {
+  const supabase = await getAuthed();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from('pain_points')
+    .select('*')
+    .eq('is_active', true)
+    .order('order_idx');
+  return (data as import('./types').PainPoint[] | null) ?? [];
+});
+
 export const getDealChecklist = cache(async (dealId: string): Promise<ChecklistItem[]> => {
   const supabase = await getAuthed();
   if (!supabase) return [];

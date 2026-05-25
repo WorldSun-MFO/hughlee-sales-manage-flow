@@ -39,6 +39,16 @@ export interface ScoreNote {
   updated_at?: string;
 }
 
+export interface PainPoint {
+  id: string;
+  pain: string;
+  product: string;
+  pitch: string;
+  tiers: string;
+  order_idx: number;
+  is_active: boolean;
+}
+
 export interface ChecklistItem {
   deal_id: string;
   item_key: string;       // 例如 'l2_aum',包含 stage 前綴

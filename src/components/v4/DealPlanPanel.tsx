@@ -162,7 +162,6 @@ function PlanResult({ plan, dealId, isFixtures }: { plan: DealPlan; dealId: stri
     try {
       await savePlan(dealId, plan);
       setSaved(true);
-      startTransition(() => router.refresh());
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       setSaveErr((err as Error).message);
@@ -297,7 +296,6 @@ function FocusList({ step, dealId, isFixtures }: { step: PlanStep; dealId: strin
         }
       }
       setDone(true);
-      startTransition(() => router.refresh());
       setTimeout(() => setDone(false), 2000);
     } catch (e) {
       setErr((e as Error).message);

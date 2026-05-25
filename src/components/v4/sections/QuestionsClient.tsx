@@ -17,7 +17,7 @@ export function QuestionsClient({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const refresh = () => startTransition(() => router.refresh());
+  const refresh = () => undefined; // fire-and-forget;不再 router.refresh,改靠本地 optimistic state
 
   const askedKeys = new Set(questions.map((q) => q.question_key));
   if (askedKeys.size === 0) return null;

@@ -20,7 +20,7 @@ const TIER_OPTIONS = [
 export function HeaderClient({ deal, isFixtures }: { deal: Deal; isFixtures: boolean }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const refresh = () => startTransition(() => router.refresh());
+  const refresh = () => undefined; // fire-and-forget;不再 router.refresh,改靠本地 optimistic state
 
   return (
     <header className="grid gap-3">

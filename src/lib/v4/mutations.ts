@@ -136,9 +136,11 @@ export interface TaskInsert {
   status?: 'todo' | 'doing' | 'done';
 }
 
-export async function createTask(input: TaskInsert): Promise<void> {
+// 改回傳真實 task id,讓 TaskComposer 把 tmp id 換成 DB 真 id
+// 後續點完成 / 改優先級 / 刪除才打得中資料
+export async function createTask(input: TaskInsert): Promise<string> {
   const supabase = createClient();
-  const { error } = await supabase.from('tasks').insert({
+  const { data, error } = await supabase.from('tasks').insert({
     deal_id: input.deal_id,
     title: input.title,
     description: input.description ?? '',
@@ -146,8 +148,9 @@ export async function createTask(input: TaskInsert): Promise<void> {
     due_date: input.due_date ?? null,
     priority: input.priority ?? 'normal',
     status: input.status ?? 'todo',
-  });
+  }).select('id').single();
   if (error) throw error;
+  return (data as { id: string }).id;
 }
 
 export async function patchTask(
@@ -316,4 +319,69 @@ export async function createDeal(input: NewDealInput): Promise<string> {
   void scoreErr;
 
   return newId;
+}
+
+// ============================================================
+// Phase 4 補回:Plan step toggle / 刪除案件 / 設聯繫日 / 強連 intel
+// ============================================================
+
+// 對應 deals.plan(JSONB)某一步驟的 completed 狀態反轉
+export async function togglePlanStep(dealId: string, stepId: string): Promise<void> {
+  const supabase = createClient();
+  const { data: row, error: readErr } = await supabase
+    .from('deals')
+    .select('plan')
+    .eq('id', dealId)
+    .single();
+  if (readErr) throw readErr;
+  const plan = (row?.plan as { steps?: Array<{ id: string; completed?: boolean; completed_at?: string | null }> } | null) ?? null;
+  if (!plan?.steps) throw new Error('此案件還沒有 saved plan');
+  const nextSteps = plan.steps.map((s) => s.id === stepId ? {
+    ...s,
+    completed: !s.completed,
+    completed_at: !s.completed ? new Date().toISOString() : null,
+  } : s);
+  const nextPlan = { ...plan, steps: nextSteps };
+  const { error } = await supabase
+    .from('deals')
+    .update({ plan: nextPlan, last_updated: new Date().toISOString() })
+    .eq('id', dealId);
+  if (error) throw error;
+}
+
+// 刪除案件(audit log trigger 會記錄,admin 可用 docs/RECOVERY.md 兩行 SQL 還原)
+export async function deleteDeal(dealId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('deals').delete().eq('id', dealId);
+  if (error) throw error;
+}
+
+// 顯式設定 last_contact_at 為任意日期(跟 markContacted 不同 — markContacted 強制 now)
+export async function setLastContactAt(dealId: string, iso: string | null): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('deals')
+    .update({ last_contact_at: iso, last_updated: new Date().toISOString() })
+    .eq('id', dealId);
+  if (error) throw error;
+}
+
+// 把 intel 直接關聯到 deal(供 client_talking_points 採納用)
+// upsert intel_deal_links;RLS:can_access_deal + intel 可讀
+export async function linkIntelToDeal(
+  intelId: string,
+  dealId: string,
+  reason = '',
+): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from('intel_deal_links')
+    .upsert({
+      intel_id: intelId,
+      deal_id: dealId,
+      relevance_reason: reason,
+      linked_by: user?.id ?? null,
+    }, { onConflict: 'intel_id,deal_id', ignoreDuplicates: false });
+  if (error) throw error;
 }

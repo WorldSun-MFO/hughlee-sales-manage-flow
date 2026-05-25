@@ -30,7 +30,7 @@ export function ScoresClient({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const refresh = () => startTransition(() => router.refresh());
+  const refresh = () => undefined; // fire-and-forget;不再 router.refresh,改靠本地 optimistic state
 
   return (
     <section className="grid gap-3">

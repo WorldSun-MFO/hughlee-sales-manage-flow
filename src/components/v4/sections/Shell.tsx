@@ -45,8 +45,7 @@ export function ClientDetailShell({
     setContactBusy(true); setContactMsg(null);
     try {
       await markContacted(deal.id);
-      setContactMsg('✓ 已更新最後聯繫時間');
-      startTransition(() => router.refresh());
+      setContactMsg('✓ 已更新最後聯繫時間(背景同步,不刷新頁面)');
       setTimeout(() => setContactMsg(null), 2500);
     } catch (err) {
       setContactMsg(`失敗:${(err as Error).message}`);
