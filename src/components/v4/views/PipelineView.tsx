@@ -10,7 +10,7 @@ import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 
 type SortKey = 'aum_desc' | 'aum_asc' | 'updated_desc' | 'updated_asc' | 'score_desc' | 'score_asc';
 
-export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
+export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/workspace' | '/hub' }) {
   const [stage, setStage] = useState<StageId | ''>('');
   const [tier, setTier] = useState<Tier | ''>('');
   const [rmId, setRmId] = useState<string>('');
@@ -58,21 +58,21 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
   const maxStageCount = Math.max(...STAGES.map((s) => stageCount(s.id)), 1);
 
   return (
-    <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+    <div className="grid gap-10 px-4 py-6 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
       <RealtimeRefresher isFixtures={isFixtures} tables={['deals', 'scores', 'tasks']} />
       <header className="grid gap-2">
         <div className="label-caps text-ink/45">Pipeline</div>
-        <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
+        <h1 className="font-v4-serif text-[32px] font-medium leading-[1.05] tracking-tight text-ink sm:text-[44px] lg:text-[56px]">
           銷售漏斗
         </h1>
-        <p className="max-w-2xl text-base leading-7 text-ink/65">
+        <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">
           按 L1–L7 階段分佈、各階段加總 AUM、可篩選的全案件清單。
         </p>
       </header>
 
       <section className="grid gap-3">
         <div className="label-caps text-ink/55">階段分布</div>
-        <div className="grid gap-1.5 rounded-md border border-ink/10 bg-paper p-5">
+        <div className="grid gap-1.5 rounded-md border border-ink/10 bg-paper p-3 sm:p-5">
           {STAGES.map((s) => {
             const count = stageCount(s.id);
             const aum = stageAum(s.id);
@@ -84,25 +84,25 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
                 type="button"
                 onClick={() => setStage((cur) => (cur === s.id ? '' : s.id))}
                 className={cn(
-                  'grid grid-cols-[48px_1fr_120px] items-center gap-4 rounded-sm px-2 py-1.5 text-left transition',
+                  'grid grid-cols-[40px_1fr_84px] items-center gap-2 rounded-sm px-1.5 py-1.5 text-left transition sm:grid-cols-[48px_1fr_120px] sm:gap-4 sm:px-2',
                   active ? 'bg-ink/5 ring-1 ring-inset ring-ink/20' : 'hover:bg-cream/60',
                 )}
               >
-                <span className={`stage-${s.id} grid h-7 w-12 place-items-center rounded-sm font-v4-mono text-[11px] font-bold`}>
+                <span className={`stage-${s.id} grid h-7 w-10 place-items-center rounded-sm font-v4-mono text-[11px] font-bold sm:w-12`}>
                   {s.id}
                 </span>
-                <div className="grid gap-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-ink/70">{s.name}</span>
-                    <span className="font-v4-mono text-[11px] text-ink/45 numeric">{STAGE_PROB[s.id]}%</span>
+                <div className="grid gap-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-semibold text-ink/70">{s.name}</span>
+                    <span className="font-v4-mono text-[11px] text-ink/45 numeric shrink-0">{STAGE_PROB[s.id]}%</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-ink/8">
                     <div className={`stage-${s.id} h-full transition-all`} style={{ width: `${Math.max(width, 4)}%` }} />
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-v4-mono text-sm font-semibold text-ink numeric">{count} 件</div>
-                  <div className="font-v4-mono text-[11px] text-ink/55 numeric">{fmtMoney(aum)}</div>
+                  <div className="font-v4-mono text-xs font-semibold text-ink numeric sm:text-sm">{count} 件</div>
+                  <div className="font-v4-mono text-[10px] text-ink/55 numeric sm:text-[11px]">{fmtMoney(aum)}</div>
                 </div>
               </button>
             );
@@ -112,9 +112,9 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
 
       <section className="grid gap-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <div className="label-caps text-ink/55">All deals · {filteredDeals.length} / {snapshot.deals.length}</div>
-            <h2 className="mt-1 font-v4-serif text-2xl font-medium text-ink">案件清單</h2>
+            <h2 className="mt-1 font-v4-serif text-xl font-medium text-ink sm:text-2xl">案件清單</h2>
           </div>
           {hasFilter ? (
             <button
@@ -127,13 +127,13 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-md border border-ink/15 bg-paper px-2.5 py-1.5">
+          <div className="flex w-full items-center gap-2 rounded-md border border-ink/15 bg-paper px-2.5 py-1.5 sm:w-auto">
             <Search className="h-3.5 w-3.5 text-ink/45" strokeWidth={1.75} />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="搜尋客戶 / 商品 / 下一步"
-              className="w-56 bg-transparent text-sm text-ink outline-none placeholder:text-ink/35"
+              className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink/35 sm:w-56"
             />
           </div>
           <FilterSelect value={tier} onChange={(v) => setTier(v as Tier | '')}>
@@ -173,10 +173,10 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
                 <li key={d.id}>
                   <Link
                     href={`${base}/clients/${d.id}`}
-                    className="group grid grid-cols-[60px_1fr_140px_120px] items-center gap-4 rounded-md border border-ink/10 bg-paper p-4 transition hover:border-ink/25 hover:shadow-panel"
+                    className="group grid grid-cols-[52px_1fr_auto] items-center gap-3 rounded-md border border-ink/10 bg-paper p-3 transition hover:border-ink/25 hover:shadow-panel sm:grid-cols-[60px_1fr_140px_120px] sm:gap-4 sm:p-4"
                   >
                     <div className="flex flex-col items-center gap-1">
-                      <span className={`stage-${d.stage} grid h-9 w-12 place-items-center rounded-sm font-v4-mono text-xs font-bold`}>
+                      <span className={`stage-${d.stage} grid h-9 w-11 place-items-center rounded-sm font-v4-mono text-xs font-bold sm:w-12`}>
                         {d.stage}
                       </span>
                       {d.tier ? (
@@ -184,16 +184,26 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
                       ) : null}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-v4-serif text-lg font-semibold leading-tight text-ink">
+                      <div className="font-v4-serif text-base font-semibold leading-tight text-ink sm:text-lg">
                         {d.name.replace(/^【範例】/, '')}
                       </div>
-                      <div className="mt-1 flex items-center gap-2 font-v4-mono text-xs text-ink/55">
-                        <span>{d.rm?.full_name ?? '—'}</span>
+                      <div className="mt-1 flex items-center gap-2 font-v4-mono text-[11px] text-ink/55 sm:text-xs">
+                        <span className="truncate">{d.rm?.full_name ?? '—'}</span>
                         <span className="text-ink/25">·</span>
                         <span className="truncate">{d.product ?? '—'}</span>
                       </div>
+                      {/* mobile-only: reason + score + AUM 緊湊行 */}
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 sm:hidden">
+                        <span className="font-v4-mono text-xs font-semibold text-ink numeric">{fmtMoney(Number(d.aum_usd))}</span>
+                        {reason ? (
+                          <span className="font-v4-mono text-[11px] font-semibold text-ink/70">{reason.icon} {reason.text}</span>
+                        ) : (
+                          <span className="font-v4-mono text-[11px] text-ink/35">健康</span>
+                        )}
+                        <span className="font-v4-mono text-[11px] text-ink/45 numeric">{totalScore(d)}/80</span>
+                      </div>
                     </div>
-                    <div className="text-xs">
+                    <div className="hidden text-xs sm:block">
                       {reason ? (
                         <span className="font-v4-mono font-semibold text-ink/70">{reason.icon} {reason.text}</span>
                       ) : (
@@ -202,7 +212,7 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/v
                       <div className="mt-1 font-v4-mono text-[11px] text-ink/45 numeric">分數 {totalScore(d)}/80</div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="font-v4-mono text-base font-semibold text-ink numeric">{fmtMoney(Number(d.aum_usd))}</span>
+                      <span className="hidden font-v4-mono text-base font-semibold text-ink numeric sm:inline">{fmtMoney(Number(d.aum_usd))}</span>
                       <ArrowUpRight className="h-4 w-4 text-ink/30 transition group-hover:text-ink" strokeWidth={1.75} />
                     </div>
                   </Link>

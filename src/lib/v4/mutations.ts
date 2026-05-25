@@ -180,13 +180,32 @@ export function splitNextStepIntoTasks(text: string): string[] {
 }
 
 // ---------- Plan 存回 deals.plan ----------
-export async function savePlan(dealId: string, plan: unknown): Promise<void> {
+// 對齊原 Dashboard.savePlan:
+//   1. update deals.plan (JSONB)
+//   2. update deals.target_close_date(讓 deal 的目標成交日跟 plan 同步)
+//   3. update deals.last_updated
+//   4. insert system comment 到時間軸(讓 review 看得到 plan 何時生成、可行性)
+export async function savePlan(
+  dealId: string,
+  plan: import('./types').DealPlan,
+): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase
-    .from('deals')
-    .update({ plan, last_updated: new Date().toISOString() })
-    .eq('id', dealId);
+  const { error } = await supabase.from('deals').update({
+    plan,
+    target_close_date: plan.target_date,
+    last_updated: new Date().toISOString(),
+  }).eq('id', dealId);
   if (error) throw error;
+
+  // 順手寫一筆系統 comment 紀錄
+  const { data: { user } } = await supabase.auth.getUser();
+  await supabase.from('comments').insert({
+    deal_id: dealId,
+    author_id: user?.id ?? null,
+    body: `🎯 AI 產生成交路徑(目標 ${plan.target_date},可行性 ${plan.feasibility})`,
+    is_system: true,
+    is_raw: false,
+  });
 }
 
 // ============================================================

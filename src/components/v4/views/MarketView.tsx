@@ -45,7 +45,7 @@ export function MarketView({
   rows, base,
 }: {
   rows: MarketIntelRow[];
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
 }) {
   const [q, setQ] = useState('');
   const [region, setRegion] = useState<IntelRegion | ''>('');
@@ -71,20 +71,20 @@ export function MarketView({
   const hasFilter = !!(q || region || sourceType || stance || origin);
 
   return (
-    <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+    <div className="grid gap-8 px-4 py-6 sm:gap-10 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
       <header className="grid gap-2">
         <div className="label-caps text-ink/45">Market Intel</div>
-        <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
+        <h1 className="font-v4-serif text-[32px] font-medium leading-[1.05] tracking-tight text-ink sm:text-[44px] lg:text-[56px]">
           市場大腦
         </h1>
-        <p className="max-w-2xl text-base leading-7 text-ink/65">
+        <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">
           每 3 小時自動抓 RSS / API 來源 → AI 萃取摘要 → 與客戶配對。
           {' '}<span className="font-v4-mono text-[12px] text-ink/45">(cron 走 /api/cron/ingest-market)</span>
         </p>
       </header>
 
       {/* Quick actions */}
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
         <ActionCard href={`${base}/market/new`} icon={Plus} tone="ink"
           label="新增情報" description="貼研報 / 網址 → AI 一鍵摘要 + 建議關聯客戶" />
         <ActionCard href={`${base}/market/synthesis`} icon={Scale} tone="cobalt"
@@ -96,13 +96,13 @@ export function MarketView({
       {/* Filter bar + list */}
       <section className="grid gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-md border border-ink/15 bg-paper px-2.5 py-1.5">
+          <div className="flex w-full items-center gap-2 rounded-md border border-ink/15 bg-paper px-2.5 py-1.5 sm:w-auto">
             <Search className="h-3.5 w-3.5 text-ink/45" strokeWidth={1.75} />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="搜尋標題 / 摘要 / 來源 / 作者"
-              className="w-60 bg-transparent text-sm text-ink outline-none placeholder:text-ink/35"
+              className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink/35 sm:w-60"
             />
           </div>
           <FilterSelect value={region} onChange={(v) => setRegion(v as IntelRegion | '')}>
@@ -200,9 +200,9 @@ function IntelCard({ intel }: { intel: MarketIntelRow }) {
     <li>
       <Link
         href={`/market/${intel.id}` as never}
-        className="group grid grid-cols-[100px_1fr_auto] items-start gap-4 rounded-md border border-ink/10 bg-paper p-5 transition hover:border-ink/25 hover:shadow-panel"
+        className="group flex flex-col gap-3 rounded-md border border-ink/10 bg-paper p-4 transition hover:border-ink/25 hover:shadow-panel sm:grid sm:grid-cols-[100px_1fr_auto] sm:items-start sm:gap-4 sm:p-5"
       >
-        <div className="grid gap-1.5">
+        <div className="flex flex-row flex-wrap items-center gap-2 sm:grid sm:gap-1.5">
           <span className={cn('inline-flex items-center justify-center rounded-sm border px-2 py-0.5 font-v4-mono text-[10px] font-bold', STANCE_TONE[intel.stance])}>
             {STANCE_LABEL[intel.stance]}
           </span>
@@ -211,7 +211,7 @@ function IntelCard({ intel }: { intel: MarketIntelRow }) {
           </span>
         </div>
         <div className="min-w-0">
-          <h3 className="font-v4-serif text-lg font-semibold leading-tight text-ink">{intel.title}</h3>
+          <h3 className="font-v4-serif text-base font-semibold leading-tight text-ink sm:text-lg">{intel.title}</h3>
           {intel.summary && (
             <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-ink/65">{intel.summary}</p>
           )}
@@ -243,7 +243,7 @@ function IntelCard({ intel }: { intel: MarketIntelRow }) {
             <span className="numeric">{daysSince(intel.published_at ?? intel.created_at)} 天前</span>
           </div>
         </div>
-        <ArrowUpRight className="h-5 w-5 text-ink/30 transition group-hover:text-ink" strokeWidth={1.75} />
+        <ArrowUpRight className="hidden h-5 w-5 text-ink/30 transition group-hover:text-ink sm:block" strokeWidth={1.75} />
       </Link>
     </li>
   );
@@ -254,7 +254,7 @@ function FilterSelect({ value, onChange, children }: { value: string; onChange: 
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-[140px] rounded-md border border-ink/15 bg-paper px-2.5 text-sm font-semibold text-ink outline-none transition hover:border-ink/30"
+      className="h-9 min-w-[120px] flex-1 rounded-md border border-ink/15 bg-paper px-2.5 text-sm font-semibold text-ink outline-none transition hover:border-ink/30 sm:flex-none sm:w-[140px]"
     >
       {children}
     </select>

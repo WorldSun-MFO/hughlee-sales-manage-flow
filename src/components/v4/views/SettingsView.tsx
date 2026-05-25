@@ -48,7 +48,7 @@ export function SettingsView({
   const isFixtures = snapshot.source === 'fixtures';
 
   return (
-    <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+    <div className="grid gap-10 px-4 py-6 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
       <RealtimeRefresher isFixtures={isFixtures} tables={['settings', 'teams', 'profiles']} />
 
       <header className="grid gap-2">
@@ -101,9 +101,9 @@ export function SettingsView({
 
 function Row({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="grid grid-cols-[120px_1fr] items-center gap-3 border-b border-ink/8 pb-2 last:border-b-0 last:pb-0">
+    <div className="grid grid-cols-1 gap-1 border-b border-ink/8 pb-2 last:border-b-0 last:pb-0 sm:grid-cols-[120px_1fr] sm:items-center sm:gap-3">
       <span className="label-caps text-ink/45">{label}</span>
-      <span className={cn('text-sm text-ink/85', mono && 'font-v4-mono numeric')}>{value}</span>
+      <span className={cn('text-sm text-ink/85 break-words', mono && 'font-v4-mono numeric')}>{value}</span>
     </div>
   );
 }
@@ -146,9 +146,9 @@ function AppSettingsSection({ settings, isFixtures }: { settings: SettingsRow; i
         <div className="label-caps text-ink/45">階段加權機率 (%)</div>
         <div className="grid gap-1.5">
           {STAGES.map((s) => (
-            <div key={s.id} className="grid grid-cols-[40px_1fr_90px] items-center gap-3 border-b border-ink/8 py-1.5 last:border-b-0">
+            <div key={s.id} className="grid grid-cols-[40px_1fr_auto] items-center gap-2 border-b border-ink/8 py-1.5 last:border-b-0 sm:grid-cols-[40px_1fr_90px] sm:gap-3">
               <span className={`stage-${s.id} rounded-sm px-1.5 py-0.5 text-center font-v4-mono text-[11px] font-bold`}>{s.id}</span>
-              <span className="text-sm text-ink/65">{s.name}</span>
+              <span className="truncate text-sm text-ink/65">{s.name}</span>
               <ProbInput
                 value={settings.stage_probs[s.id] ?? 0}
                 busy={busy === `stage-${s.id}`}
@@ -172,11 +172,11 @@ function AppSettingsSection({ settings, isFixtures }: { settings: SettingsRow; i
         <div className="label-caps text-ink/45">Tier 與聯繫週期(唯讀)</div>
         <ul className="grid gap-1.5">
           {settings.tier_config.tiers.map((t) => (
-            <li key={t.key} className="grid grid-cols-[60px_1fr_120px_120px] items-center gap-3 border-b border-ink/8 py-1.5 last:border-b-0 text-sm">
+            <li key={t.key} className="grid grid-cols-[48px_1fr] items-center gap-x-3 gap-y-1 border-b border-ink/8 py-1.5 text-sm last:border-b-0 sm:grid-cols-[60px_1fr_auto_auto] sm:gap-3 lg:grid-cols-[60px_1fr_140px_140px]">
               <span className="font-v4-mono font-bold text-ink">{t.key}</span>
-              <span className="text-ink/75">{t.name}</span>
-              <span className="font-v4-mono text-ink/55 numeric">AUM ≥ ${(t.aum_min / 1_000_000).toFixed(1)}M</span>
-              <span className="font-v4-mono text-ink/55 numeric">{t.contact_days} 天聯繫一次</span>
+              <span className="truncate text-ink/75">{t.name}</span>
+              <span className="col-start-2 font-v4-mono text-xs text-ink/55 numeric sm:col-start-auto sm:text-sm sm:text-right lg:text-left">AUM ≥ ${(t.aum_min / 1_000_000).toFixed(1)}M</span>
+              <span className="col-start-2 font-v4-mono text-xs text-ink/55 numeric sm:col-start-auto sm:text-sm sm:text-right lg:text-left">{t.contact_days} 天聯繫一次</span>
             </li>
           ))}
         </ul>
@@ -209,7 +209,7 @@ function ProbInput({ value, busy, disabled, onSave }: { value: number; busy: boo
 function RedFlagRow({ label, value, suffix, busy, disabled, onSave }: { label: string; value: number; suffix: string; busy: boolean; disabled: boolean; onSave: (v: number) => void }) {
   const [draft, setDraft] = useState(String(value));
   return (
-    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-ink/8 py-1.5 last:border-b-0">
+    <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 border-b border-ink/8 py-1.5 last:border-b-0 sm:grid-cols-[1fr_auto_auto]">
       <span className="text-sm text-ink/65">{label}</span>
       <input
         type="number"
@@ -220,7 +220,7 @@ function RedFlagRow({ label, value, suffix, busy, disabled, onSave }: { label: s
         disabled={busy || disabled}
         className="w-20 rounded-sm border border-ink/15 bg-cream/40 px-2 py-0.5 font-v4-mono text-sm text-ink focus:border-ink/40 focus:outline-none"
       />
-      <span className="font-v4-mono text-xs text-ink/65 w-32 inline-flex items-center gap-1">{suffix}{busy && <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />}</span>
+      <span className="col-span-2 inline-flex w-auto items-center gap-1 font-v4-mono text-xs text-ink/65 sm:col-span-1 sm:w-32">{suffix}{busy && <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />}</span>
     </div>
   );
 }
@@ -264,19 +264,19 @@ function TeamsSection({ snapshot, isFixtures }: { snapshot: Snapshot; isFixtures
           {snapshot.teams.map((t) => {
             const memberCount = snapshot.profiles.filter((p) => p.team_id === t.id).length;
             return (
-              <li key={t.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-ink/8 pb-2 last:border-b-0 last:pb-0">
+              <li key={t.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 border-b border-ink/8 pb-2 last:border-b-0 last:pb-0 sm:grid-cols-[1fr_auto_auto]">
                 <InlineText
                   value={t.name}
                   onSave={async (next) => { await renameTeam(t.id, next); }}
                   isFixtures={isFixtures}
                   displayClassName="font-v4-serif text-base font-semibold text-ink"
                 />
-                <span className="font-v4-mono text-xs text-ink/55 numeric">{memberCount} 位成員</span>
+                <span className="col-start-1 row-start-2 font-v4-mono text-xs text-ink/55 numeric sm:col-start-2 sm:row-start-1">{memberCount} 位成員</span>
                 <button
                   type="button"
                   onClick={() => rm(t.id)}
                   disabled={delBusyId === t.id || isFixtures}
-                  className="grid h-7 w-7 place-items-center rounded-sm text-ink/40 transition hover:bg-claret/10 hover:text-claret disabled:cursor-not-allowed"
+                  className="col-start-2 row-start-1 grid h-7 w-7 place-items-center rounded-sm text-ink/40 transition hover:bg-claret/10 hover:text-claret disabled:cursor-not-allowed sm:col-start-3"
                   title="刪除團隊"
                 >
                   {delBusyId === t.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />}
@@ -433,43 +433,65 @@ function MemberRow({
 
   return (
     <div className={cn('grid gap-2 rounded-md border px-4 py-3 transition', banned ? 'border-claret/20 bg-claret/5' : 'border-ink/10 bg-paper')}>
-      <div className="grid grid-cols-[1fr_140px_140px_140px_auto] items-center gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <InlineText
-              value={profile.full_name ?? ''}
-              onSave={onChangeName}
-              isFixtures={isFixtures}
-              placeholder="(未命名)"
-              displayClassName="font-v4-serif text-sm font-semibold text-ink"
-            />
-            {banned && <span className="rounded-sm bg-claret/15 px-1.5 py-0.5 font-v4-mono text-[10px] font-bold text-claret">已停用</span>}
-            {status && !status.has_auth && !banned && <span className="rounded-sm bg-brass/15 px-1.5 py-0.5 font-v4-mono text-[10px] font-bold text-brass">未啟用</span>}
+      {/* 手機 (< sm):卡片堆疊;sm+:橫向 5 欄表格 */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_110px_110px_auto] sm:items-center md:grid-cols-[1fr_120px_120px_120px_auto] lg:grid-cols-[1fr_140px_140px_140px_auto]">
+        {/* Name + email + badges — 手機跟桌機都跨第一格,但桌機含 rm_code 之外 */}
+        <div className="flex items-start justify-between gap-2 min-w-0 sm:block">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <InlineText
+                value={profile.full_name ?? ''}
+                onSave={onChangeName}
+                isFixtures={isFixtures}
+                placeholder="(未命名)"
+                displayClassName="font-v4-serif text-sm font-semibold text-ink"
+              />
+              {banned && <span className="rounded-sm bg-claret/15 px-1.5 py-0.5 font-v4-mono text-[10px] font-bold text-claret">已停用</span>}
+              {status && !status.has_auth && !banned && <span className="rounded-sm bg-brass/15 px-1.5 py-0.5 font-v4-mono text-[10px] font-bold text-brass">未啟用</span>}
+            </div>
+            <div className="mt-0.5 truncate font-v4-mono text-[11px] text-ink/55">{profile.email}</div>
+            {/* 手機:rm_code 顯示在 email 下方 */}
+            <div className="mt-1 font-v4-mono text-[11px] text-ink/45 sm:hidden">
+              <span className="label-caps text-ink/40">RM code</span> <span className="ml-1 text-ink/65">{profile.rm_code ?? '—'}</span>
+            </div>
           </div>
-          <div className="mt-0.5 truncate font-v4-mono text-[11px] text-ink/55">{profile.email}</div>
         </div>
-        <span className="font-v4-mono text-xs text-ink/55">{profile.rm_code ?? '—'}</span>
-        <InlineSelect<Role>
-          value={profile.role}
-          options={ROLE_OPTIONS}
-          onSave={onChangeRole}
-          isFixtures={isFixtures}
-          renderDisplay={(v) => <span className="font-v4-mono text-xs font-semibold text-ink">{v ? ROLE_LABEL[v] : '—'}</span>}
-        />
-        <InlineSelect<string>
-          value={profile.team_id}
-          options={teams.map((t) => ({ value: t.id, label: t.name }))}
-          onSave={onChangeTeam}
-          isFixtures={isFixtures}
-          renderDisplay={(v) => <span className="font-v4-mono text-xs text-ink/75">{teams.find((t) => t.id === v)?.name ?? '— 無'}</span>}
-        />
-        <div className="flex items-center gap-1">
+
+        {/* RM code — 桌機才獨立成欄 (md+) */}
+        <span className="hidden font-v4-mono text-xs text-ink/55 md:inline">{profile.rm_code ?? '—'}</span>
+
+        {/* Role */}
+        <div className="grid grid-cols-[80px_1fr] items-center gap-2 sm:block">
+          <span className="label-caps text-ink/45 sm:hidden">角色</span>
+          <InlineSelect<Role>
+            value={profile.role}
+            options={ROLE_OPTIONS}
+            onSave={onChangeRole}
+            isFixtures={isFixtures}
+            renderDisplay={(v) => <span className="font-v4-mono text-xs font-semibold text-ink">{v ? ROLE_LABEL[v] : '—'}</span>}
+          />
+        </div>
+
+        {/* Team */}
+        <div className="grid grid-cols-[80px_1fr] items-center gap-2 sm:block">
+          <span className="label-caps text-ink/45 sm:hidden">團隊</span>
+          <InlineSelect<string>
+            value={profile.team_id}
+            options={teams.map((t) => ({ value: t.id, label: t.name }))}
+            onSave={onChangeTeam}
+            isFixtures={isFixtures}
+            renderDisplay={(v) => <span className="font-v4-mono text-xs text-ink/75">{teams.find((t) => t.id === v)?.name ?? '— 無'}</span>}
+          />
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-1 border-t border-ink/8 pt-2 sm:justify-start sm:border-t-0 sm:pt-0">
           <button
             type="button"
             onClick={doGenLink}
             disabled={busy !== null || isFixtures}
             title="產生一次性登入連結"
-            className="grid h-7 w-7 place-items-center rounded-sm text-cobalt/70 transition hover:bg-cobalt/10 hover:text-cobalt disabled:cursor-not-allowed disabled:opacity-40"
+            className="grid h-8 w-8 place-items-center rounded-sm text-cobalt/70 transition hover:bg-cobalt/10 hover:text-cobalt disabled:cursor-not-allowed disabled:opacity-40 sm:h-7 sm:w-7"
           >
             {busy === 'link' ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <LinkIcon className="h-3.5 w-3.5" strokeWidth={2} />}
           </button>
@@ -479,7 +501,7 @@ function MemberRow({
               onClick={doUnban}
               disabled={busy !== null || isFixtures}
               title="復原登入"
-              className="grid h-7 w-7 place-items-center rounded-sm text-forest/70 transition hover:bg-forest/10 hover:text-forest disabled:cursor-not-allowed disabled:opacity-40"
+              className="grid h-8 w-8 place-items-center rounded-sm text-forest/70 transition hover:bg-forest/10 hover:text-forest disabled:cursor-not-allowed disabled:opacity-40 sm:h-7 sm:w-7"
             >
               {busy === 'unban' ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />}
             </button>
@@ -489,7 +511,7 @@ function MemberRow({
               onClick={doBan}
               disabled={busy !== null || isFixtures}
               title="停用登入"
-              className="grid h-7 w-7 place-items-center rounded-sm text-ink/40 transition hover:bg-claret/10 hover:text-claret disabled:cursor-not-allowed disabled:opacity-40"
+              className="grid h-8 w-8 place-items-center rounded-sm text-ink/40 transition hover:bg-claret/10 hover:text-claret disabled:cursor-not-allowed disabled:opacity-40 sm:h-7 sm:w-7"
             >
               {busy === 'ban' ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <Ban className="h-3.5 w-3.5" strokeWidth={2} />}
             </button>

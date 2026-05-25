@@ -3,7 +3,7 @@ import { ArrowUpRight, Flag, Phone, Sparkles, TrendingUp } from 'lucide-react';
 import type { Snapshot, StageId } from '@/lib/v4/types';
 import { contactOverdue, fmtMoney, redFlag } from '@/lib/v4/utils';
 
-export function OverviewView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
+export function OverviewView({ snapshot, base }: { snapshot: Snapshot; base: '/workspace' | '/hub' }) {
   const deals = snapshot.deals;
   const activeDeals = deals.filter((d) => d.stage !== 'L7');
   const totalAum = activeDeals.reduce((s, d) => s + Number(d.aum_usd), 0);
@@ -16,18 +16,18 @@ export function OverviewView({ snapshot, base }: { snapshot: Snapshot; base: '/v
   const flagged = activeDeals.filter((d) => redFlag(d));
 
   return (
-    <div className="grid gap-12 px-8 py-10 lg:px-14 lg:py-14">
+    <div className="grid gap-8 px-4 py-6 sm:gap-12 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
       <header className="grid gap-2">
         <div className="label-caps text-ink/45">Overview</div>
-        <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
+        <h1 className="font-v4-serif text-[32px] font-medium leading-[1.05] tracking-tight text-ink sm:text-[44px] lg:text-[56px]">
           整體 Pipeline 狀況
         </h1>
       </header>
 
       <section className="grid gap-6">
-        <div className="grid gap-1 border-l-2 border-forest pl-6">
+        <div className="grid gap-1 border-l-2 border-forest pl-4 sm:pl-6">
           <div className="label-caps text-ink/55">Pipeline 總 AUM · {activeDeals.length} 個活躍案件</div>
-          <div className="font-v4-mono text-[96px] font-medium leading-none tracking-tight text-ink numeric lg:text-[120px]">
+          <div className="font-v4-mono text-[52px] font-medium leading-none tracking-tight text-ink numeric sm:text-[80px] lg:text-[120px]">
             {fmtMoney(totalAum)}
           </div>
           <div className="mt-2 max-w-md text-sm leading-6 text-ink/55">
@@ -38,7 +38,7 @@ export function OverviewView({ snapshot, base }: { snapshot: Snapshot; base: '/v
 
       <section className="grid gap-3">
         <div className="label-caps text-ink/55">分項指標</div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Tile
             href={`${base}/pipeline`}
             icon={TrendingUp}

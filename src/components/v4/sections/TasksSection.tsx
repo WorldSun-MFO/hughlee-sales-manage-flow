@@ -6,7 +6,7 @@ export async function TasksSection({
   dealId, base, isFixtures,
 }: {
   dealId: string;
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
   isFixtures: boolean;
 }) {
   const [tasks, deals, profilesTeams, tierConfig] = await Promise.all([

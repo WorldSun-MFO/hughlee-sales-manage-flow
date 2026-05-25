@@ -1,13 +1,14 @@
 'use client';
 
-// MEDDIC 評分區 — inline edit + score_notes(每分數的文字理由)
-import { useState, useTransition } from 'react';
+// MEDDIC 評分區 — inline edit + score_notes(每分數的文字理由)+ 實戰題庫
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
-import type { ScoreField, ScoreNote, Scores } from '@/lib/v4/types';
+import { Check, ChevronRight, Loader2, MessagesSquare, Star } from 'lucide-react';
+import type { DealQuestion, ScoreField, ScoreNote, Scores } from '@/lib/v4/types';
 import { cn } from '@/lib/v4/utils';
+import { QUESTION_BANK } from '@/lib/constants';
 import { InlineScore } from '@/components/v4/InlineEdit';
-import { patchScores, setScoreNote } from '@/lib/v4/mutations';
+import { patchScores, setDealQuestion, setScoreNote } from '@/lib/v4/mutations';
 
 const MEDDIC_LABELS: Array<[ScoreField, string, string]> = [
   ['m', 'M', 'Metrics'],
@@ -21,22 +22,52 @@ const MEDDIC_LABELS: Array<[ScoreField, string, string]> = [
 ];
 
 export function ScoresClient({
-  dealId, scores, notes, isFixtures,
+  dealId, scores, notes, questions, isFixtures,
 }: {
   dealId: string;
   scores: Scores | null;
   notes: ScoreNote[];
+  questions: DealQuestion[];
   isFixtures: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const refresh = () => undefined; // fire-and-forget;不再 router.refresh,改靠本地 optimistic state
 
+  // 樂觀本地 state:已勾「答過」的 question_key set。server 寫入由 setDealQuestion 背景跑。
+  const [answered, setAnswered] = useState<Set<string>>(
+    () => new Set(questions.filter((q) => q.answered).map((q) => q.question_key)),
+  );
+  useEffect(() => {
+    setAnswered(new Set(questions.filter((q) => q.answered).map((q) => q.question_key)));
+  }, [questions]);
+
+  async function toggleQuestion(questionKey: string) {
+    if (isFixtures) return;
+    const wasAnswered = answered.has(questionKey);
+    // optimistic
+    setAnswered((prev) => {
+      const next = new Set(prev);
+      if (wasAnswered) next.delete(questionKey); else next.add(questionKey);
+      return next;
+    });
+    try {
+      await setDealQuestion(dealId, questionKey, !wasAnswered);
+    } catch {
+      // rollback
+      setAnswered((prev) => {
+        const next = new Set(prev);
+        if (wasAnswered) next.add(questionKey); else next.delete(questionKey);
+        return next;
+      });
+    }
+  }
+
   return (
     <section className="grid gap-3">
       <div className="flex items-baseline justify-between">
         <div className="label-caps text-ink/55">MEDDIC 評分</div>
-        <div className="font-v4-mono text-[10.5px] text-ink/45">點分數改 0–10 · 點「+ 加備註」寫理由</div>
+        <div className="font-v4-mono text-[10.5px] text-ink/45">點分數改 0–10 · 展開「實戰題庫」跟客戶問</div>
       </div>
       <div className="grid gap-2 rounded-md border border-ink/10 bg-paper p-5">
         {MEDDIC_LABELS.map(([k, key, label]) => {
@@ -65,11 +96,96 @@ export function ScoresClient({
                 isFixtures={isFixtures}
                 onSaved={refresh}
               />
+              <QuestionBank
+                field={k}
+                answered={answered}
+                onToggle={toggleQuestion}
+                isFixtures={isFixtures}
+              />
             </div>
           );
         })}
       </div>
     </section>
+  );
+}
+
+// ============================================================
+// 實戰題庫(per-field expandable)
+// ============================================================
+function QuestionBank({
+  field, answered, onToggle, isFixtures,
+}: {
+  field: ScoreField;
+  answered: Set<string>;
+  onToggle: (questionKey: string) => void;
+  isFixtures: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const items = QUESTION_BANK[field] ?? [];
+  if (items.length === 0) return null;
+  const done = items.filter((it) => answered.has(it.key)).length;
+  const pct = Math.round((done / items.length) * 100);
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="group flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-cream/40"
+      >
+        <ChevronRight
+          className={cn('h-3.5 w-3.5 shrink-0 text-ink/50 transition-transform', open && 'rotate-90')}
+          strokeWidth={2}
+        />
+        <MessagesSquare className="h-3.5 w-3.5 shrink-0 text-cobalt" strokeWidth={1.75} />
+        <span className="font-v4-mono text-[11px] font-semibold text-ink/70">實戰題庫</span>
+        <span className="font-v4-mono text-[10.5px] text-ink/45 numeric">
+          {done}/{items.length} 題已釐清
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="h-1 w-16 overflow-hidden rounded-full bg-ink/8 sm:w-24">
+            <div
+              className={cn('h-full transition-all', done === items.length ? 'bg-forest' : 'bg-cobalt/70')}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      </button>
+      {open && (
+        <ul className="mt-1 grid gap-0.5 rounded-sm bg-cream/40 p-2">
+          {items.map((it) => {
+            const isAnswered = answered.has(it.key);
+            return (
+              <li key={it.key}>
+                <button
+                  type="button"
+                  onClick={() => onToggle(it.key)}
+                  disabled={isFixtures}
+                  className="grid w-full grid-cols-[auto_1fr] items-start gap-2 rounded-sm px-1.5 py-1 text-left transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span
+                    className={cn(
+                      'mt-0.5 grid h-3.5 w-3.5 shrink-0 place-items-center rounded-sm border transition',
+                      isAnswered ? 'border-forest bg-forest text-paper' : 'border-ink/30 bg-paper',
+                    )}
+                  >
+                    {isAnswered && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                  </span>
+                  <span className={cn('text-xs leading-5', isAnswered ? 'text-ink/40 line-through' : 'text-ink/80')}>
+                    {it.priority === 'high' && (
+                      <Star className="mr-0.5 inline h-3 w-3 -mt-0.5 fill-claret text-claret" strokeWidth={1.5} />
+                    )}
+                    {it.q}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

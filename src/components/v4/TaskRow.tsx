@@ -24,7 +24,7 @@ export function TaskRow({
 }: {
   task: Task;
   snapshot: Snapshot;
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
   isFixtures: boolean;
   // 父層想同步本地列表時帶這兩個 callback
   // (例如 TodayView 把 status='done' 的任務移出畫面)
@@ -162,7 +162,7 @@ export function TaskRow({
 export function TaskComposer({
   base, snapshot, isFixtures, defaultDealId, onCreated, onIdResolved, onCreateFailed,
 }: {
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
   snapshot: Snapshot;
   isFixtures: boolean;
   defaultDealId?: string;

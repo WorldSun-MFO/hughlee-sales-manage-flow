@@ -6,7 +6,7 @@ import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 export function TasksClient({
   base, dealId, tasks, snapshotLite, isFixtures,
 }: {
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
   dealId: string;
   tasks: Task[];
   snapshotLite: Snapshot;

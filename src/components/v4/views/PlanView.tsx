@@ -14,10 +14,12 @@
 // (這個之後可加,或讓 PlanModal 保留主流程)
 // ============================================================
 import { useState, useMemo } from 'react';
-import { ChevronRight, Sparkles, Target, Wand2, AlertTriangle, Calendar, ListChecks, MessageSquare } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronRight, Sparkles, Target, Wand2, AlertTriangle, Calendar, ListChecks, MessageSquare, Save, Check, Loader2, ArrowUpRight } from 'lucide-react';
 import type { Snapshot, Deal } from '@/lib/v4/types';
 import { fmtMoney, cn } from '@/lib/v4/utils';
 import { STAGES } from '@/lib/v4/constants';
+import { savePlan } from '@/lib/v4/mutations';
 
 interface PlanStep {
   id: string;
@@ -47,7 +49,7 @@ const FEASIBILITY_STYLE: Record<DealPlan['feasibility'], { label: string; classN
   low:    { label: '低', className: 'bg-claret/10 text-claret border-claret/30' },
 };
 
-export function PlanView({ snapshot, base: _base = '/v4/workspace' }: { snapshot: Snapshot; base?: string }) {
+export function PlanView({ snapshot, base = '/workspace' }: { snapshot: Snapshot; base?: string }) {
   const activeDeals = useMemo(
     () => snapshot.deals.filter((d) => d.stage !== 'L7').sort((a, b) => Number(b.aum_usd) - Number(a.aum_usd)),
     [snapshot.deals],
@@ -103,7 +105,7 @@ export function PlanView({ snapshot, base: _base = '/v4/workspace' }: { snapshot
   }
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-1px)] max-w-[1240px] grid-cols-1 gap-6 px-6 pb-10 pt-12 lg:grid-cols-[360px_1fr] lg:px-10">
+    <div className="mx-auto grid min-h-[calc(100vh-1px)] max-w-[1240px] grid-cols-1 gap-6 px-6 pb-10 pt-12 lg:grid-cols-[380px_1fr] lg:px-10">
       {/* 左側:案件列表 */}
       <aside className="grid content-start gap-4">
         <header className="grid gap-1.5">
@@ -195,7 +197,15 @@ export function PlanView({ snapshot, base: _base = '/v4/workspace' }: { snapshot
           </section>
         )}
 
-        {plan && <PlanResult plan={plan} />}
+        {plan && selectedDeal && (
+          <PlanResult
+            plan={plan}
+            dealId={selectedDeal.id}
+            dealName={selectedDeal.name}
+            isFixtures={isFixtures}
+            viewDealHref={`${base}/clients/${selectedDeal.id}`}
+          />
+        )}
 
         {!plan && !busy && !error && selectedDeal && (
           <div className="grid place-items-center gap-2 rounded-md border border-dashed border-ink/15 bg-paper/60 px-6 py-12 text-center">
@@ -211,8 +221,36 @@ export function PlanView({ snapshot, base: _base = '/v4/workspace' }: { snapshot
 // ============================================================
 // 結果面板
 // ============================================================
-function PlanResult({ plan }: { plan: DealPlan }) {
+function PlanResult({
+  plan, dealId, dealName, isFixtures, viewDealHref,
+}: {
+  plan: DealPlan;
+  dealId: string;
+  dealName: string;
+  isFixtures: boolean;
+  viewDealHref: string;
+}) {
   const feas = FEASIBILITY_STYLE[plan.feasibility];
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  function handleSave() {
+    if (saving || isFixtures) {
+      if (isFixtures) { setSaveErr('fixtures 模式無法儲存'); return; }
+      return;
+    }
+    setSaving(true); setSaveErr(null);
+    savePlan(dealId, plan)
+      .then(() => {
+        // saved 維持 true,讓「→ 客戶頁面」連結持續顯示;
+        // 不自動 reset 才不會 2.5 秒後就消失
+        setSaved(true);
+      })
+      .catch((err) => setSaveErr((err as Error).message))
+      .finally(() => setSaving(false));
+  }
+
   return (
     <section className="grid gap-4">
       <div className="label-caps text-ink/50 inline-flex items-center gap-2">
@@ -295,9 +333,49 @@ function PlanResult({ plan }: { plan: DealPlan }) {
         </article>
       )}
 
-      <footer className="font-v4-mono text-[10.5px] text-ink/45">
-        Phase 2.3+ 會加「將此 plan 存進 deals.plan、勾選 focus 升級為 task」(對應既有 PlanModal)
-      </footer>
+      {/* 儲存按鈕 — sticky 在頁面底部 */}
+      <div className="sticky bottom-4 mt-2 grid gap-2 rounded-md border border-ink/15 bg-paper p-4 shadow-panel">
+        {saveErr && (
+          <div className="rounded-md border border-claret/30 bg-claret/5 px-3 py-2 text-xs text-claret">{saveErr}</div>
+        )}
+        {saved && (
+          <Link
+            href={viewDealHref as never}
+            className="group flex items-center justify-between gap-3 rounded-md border border-forest/30 bg-forest/5 px-3.5 py-2.5 text-forest transition hover:bg-forest/10"
+          >
+            <span className="grid gap-0.5">
+              <span className="label-caps text-forest/75">已儲存到 deals.plan</span>
+              <span className="text-sm font-semibold">到「{dealName}」客戶頁面看完整規劃 + 勾選步驟</span>
+            </span>
+            <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={1.75} />
+          </Link>
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="grid gap-0.5">
+            <span className="font-v4-mono text-[11px] text-ink/65">
+              儲存到 deals.plan,客戶詳情頁就看得到 + 可勾選步驟完成
+            </span>
+            <span className="font-v4-mono text-[10.5px] text-ink/45">
+              同時把目標成交日設為 {plan.target_date},時間軸寫一筆系統 comment
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || saved || isFixtures}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-semibold text-paper transition shrink-0',
+              saved ? 'bg-forest' : 'bg-ink hover:bg-graphite',
+              'disabled:cursor-not-allowed disabled:opacity-60',
+            )}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+              : saved ? <Check className="h-4 w-4" strokeWidth={2.5} />
+              : <Save className="h-4 w-4" strokeWidth={2} />}
+            {saving ? '儲存中…' : saved ? '✓ 已儲存到本案件' : '儲存這份規劃'}
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

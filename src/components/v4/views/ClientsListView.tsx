@@ -13,7 +13,7 @@ type SortKey = 'aum_desc' | 'aum_asc' | 'updated_desc' | 'updated_asc' | 'score_
 
 const TIERS_ORDER: Tier[] = ['SSS', 'S', 'A', 'B', 'C'];
 
-export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
+export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: '/workspace' | '/hub' }) {
   const isFixtures = snapshot.source === 'fixtures';
   const [q, setQ] = useState('');
   const [stage, setStage] = useState<StageId | ''>('');
@@ -57,21 +57,21 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
   const hasFilter = !!(q || stage || rmId || teamId);
 
   return (
-    <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+    <div className="grid gap-10 px-4 py-6 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
       <RealtimeRefresher isFixtures={isFixtures} tables={['deals', 'scores']} />
       <header className="grid gap-2">
-        <div className="flex items-start justify-between gap-4">
-          <div className="grid gap-2">
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
+          <div className="grid gap-2 min-w-0">
             <div className="label-caps text-ink/45">Clients</div>
-            <h1 className="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]">
+            <h1 className="font-v4-serif text-[32px] font-medium leading-[1.05] tracking-tight text-ink sm:text-[44px] lg:text-[56px]">
               客戶名冊
             </h1>
           </div>
-          <div className="pt-2">
+          <div className="pt-2 shrink-0">
             <AddDealButton base={base} isFixtures={isFixtures} />
           </div>
         </div>
-        <p className="max-w-2xl text-base leading-7 text-ink/65">
+        <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">
           以等級分組。每位客戶獨立頁面承載 MEDDIC 評分、對話紀錄、AI 路徑、任務。
         </p>
       </header>
@@ -79,13 +79,13 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
       {/* Filter bar */}
       <section className="grid gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-md border border-ink/15 bg-paper px-2.5 py-1.5">
+          <div className="flex w-full items-center gap-2 rounded-md border border-ink/15 bg-paper px-2.5 py-1.5 sm:w-auto">
             <Search className="h-3.5 w-3.5 text-ink/45" strokeWidth={1.75} />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="搜尋客戶 / 商品 / 下一步"
-              className="w-56 bg-transparent text-sm text-ink outline-none placeholder:text-ink/35"
+              className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink/35 sm:w-56"
             />
           </div>
           <FilterSelect value={stage} onChange={(v) => setStage(v as StageId | '')}>
@@ -121,7 +121,7 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
               清除 ✕
             </button>
           )}
-          <span className="ml-auto font-v4-mono text-[11px] text-ink/45 numeric">{filtered.length} / {snapshot.deals.length}</span>
+          <span className="ml-auto font-v4-mono text-[11px] text-ink/45 numeric shrink-0">{filtered.length} / {snapshot.deals.length}</span>
         </div>
       </section>
 
@@ -137,10 +137,10 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
           const tierConfig = snapshot.tierConfig.find((t) => t.key === tier);
           return (
             <section key={tier} className="grid gap-4">
-              <div className="flex items-baseline justify-between gap-3 border-b border-ink/10 pb-2">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-1 border-b border-ink/10 pb-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <span className={`rounded-sm px-2 py-1 font-v4-mono text-xs font-bold ${TIER_STYLES[tier]}`}>{tier}</span>
-                  <span className="font-v4-serif text-xl font-medium text-ink">{tierConfig?.name ?? tier}</span>
+                  <span className="font-v4-serif text-lg font-medium text-ink sm:text-xl">{tierConfig?.name ?? tier}</span>
                   <span className="font-v4-mono text-xs text-ink/45 numeric">{deals.length} 位 · {fmtMoney(tierAum)}</span>
                 </div>
                 <div className="font-v4-mono text-[11px] text-ink/45">建議聯繫週期 {tierConfig?.contact_days ?? '—'} 天</div>
@@ -150,27 +150,35 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
                   <li key={d.id}>
                     <Link
                       href={`${base}/clients/${d.id}` as never}
-                      className="group grid grid-cols-[60px_1fr_120px_120px] items-center gap-4 rounded-md border border-ink/10 bg-paper p-4 transition hover:border-ink/25 hover:shadow-panel"
+                      className="group grid grid-cols-[52px_1fr_auto] items-center gap-3 rounded-md border border-ink/10 bg-paper p-3 transition hover:border-ink/25 hover:shadow-panel sm:grid-cols-[60px_1fr_120px_120px] sm:gap-4 sm:p-4"
                     >
                       <span className={`stage-${d.stage} grid h-9 place-items-center rounded-sm font-v4-mono text-xs font-bold`}>
                         {d.stage}
                       </span>
                       <div className="min-w-0">
-                        <div className="font-v4-serif text-lg font-semibold leading-tight text-ink">
+                        <div className="font-v4-serif text-base font-semibold leading-tight text-ink sm:text-lg">
                           {d.name.replace(/^【範例】/, '')}
                         </div>
-                        <div className="mt-1 truncate font-v4-mono text-xs text-ink/55">
+                        <div className="mt-1 truncate font-v4-mono text-[11px] text-ink/55 sm:text-xs">
                           {d.rm?.full_name ?? '—'} · {d.product ?? '—'}
                         </div>
+                        {/* mobile-only: 分數 + AUM 緊湊行 */}
+                        <div className="mt-2 flex items-center gap-3 sm:hidden">
+                          <span className="font-v4-mono text-xs font-semibold text-ink numeric">{fmtMoney(Number(d.aum_usd))}</span>
+                          <span className="font-v4-mono text-[11px] text-ink/55 numeric">{totalScore(d)}/80</span>
+                          <div className="flex-1 h-1 overflow-hidden rounded-full bg-ink/8">
+                            <div className="h-full bg-forest" style={{ width: `${(totalScore(d) / 80) * 100}%` }} />
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-ink/55">
+                      <div className="hidden text-xs text-ink/55 sm:block">
                         <span className="font-v4-mono numeric">{totalScore(d)}/80</span>
                         <div className="mt-1 h-1 overflow-hidden rounded-full bg-ink/8">
                           <div className="h-full bg-forest" style={{ width: `${(totalScore(d) / 80) * 100}%` }} />
                         </div>
                       </div>
                       <div className="flex items-center justify-end gap-2">
-                        <span className="font-v4-mono text-base font-semibold text-ink numeric">{fmtMoney(Number(d.aum_usd))}</span>
+                        <span className="hidden font-v4-mono text-base font-semibold text-ink numeric sm:inline">{fmtMoney(Number(d.aum_usd))}</span>
                         <ArrowUpRight className="h-4 w-4 text-ink/30 transition group-hover:text-ink" strokeWidth={1.75} />
                       </div>
                     </Link>

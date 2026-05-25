@@ -10,15 +10,16 @@
 // ============================================================
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Phone, ClipboardList } from 'lucide-react';
+import { ArrowUpRight, ClipboardList, Phone, Target } from 'lucide-react';
 import type { Snapshot, Task } from '@/lib/v4/types';
-import { cn, fmtMoney, priorityReason, TIER_STYLES, urgencyScore } from '@/lib/v4/utils';
+import { cn, fmtMoney, priorityReason, TIER_STYLES, totalScore, urgencyScore } from '@/lib/v4/utils';
 import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
+import { MeddpiccTab } from '@/components/v4/views/MeddpiccTab';
 
-type Tab = 'priority' | 'tasks';
+type Tab = 'priority' | 'tasks' | 'meddpicc';
 
-export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/workspace' | '/v4/hub' }) {
+export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/workspace' | '/hub' }) {
   const isFixtures = snapshot.source === 'fixtures';
   const priorityDeals = snapshot.deals
     .map((d) => ({ deal: d, score: urgencyScore(d, snapshot.tierConfig) }))
@@ -34,6 +35,9 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/w
   useEffect(() => { setTasksLocal(snapshot.tasks); }, [snapshot.tasks]);
 
   const myTasks = tasksLocal.filter((t) => t.status !== 'done');
+
+  // MEDDPICC 補強名單:活躍案件中總分 < 40 (跟紅旗門檻一致) 算「需要補強」
+  const meddpiccNeedsWork = snapshot.deals.filter((d) => d.stage !== 'L7' && totalScore(d) < 40).length;
 
   // 預設選「有東西看」的 tab — 有優先客戶就先看追蹤,沒就跳任務
   const [tab, setTab] = useState<Tab>(priorityDeals.length > 0 ? 'priority' : 'tasks');
@@ -53,7 +57,7 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/w
   }
 
   return (
-    <div className="grid gap-8 px-8 py-10 lg:px-14 lg:py-14">
+    <div className="grid gap-8 px-4 py-6 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
       <RealtimeRefresher isFixtures={isFixtures} tables={['deals', 'tasks', 'comments']} />
 
       <header className="grid gap-2">
@@ -69,7 +73,7 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/w
       </header>
 
       {/* Tab 切換 */}
-      <div className="grid grid-cols-2 gap-2 rounded-md border border-ink/10 bg-paper p-1 max-w-md">
+      <div className="grid grid-cols-3 gap-2 rounded-md border border-ink/10 bg-paper p-1 max-w-2xl">
         <TabButton
           active={tab === 'priority'}
           onClick={() => setTab('priority')}
@@ -86,11 +90,18 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/w
           count={myTasks.length}
           tone="cobalt"
         />
+        <TabButton
+          active={tab === 'meddpicc'}
+          onClick={() => setTab('meddpicc')}
+          icon={Target}
+          label="MEDDPICC"
+          count={meddpiccNeedsWork}
+          tone="brass"
+        />
       </div>
 
-      {tab === 'priority' ? (
-        <PriorityList deals={priorityDeals} snapshot={snapshot} base={base} />
-      ) : (
+      {tab === 'priority' && <PriorityList deals={priorityDeals} snapshot={snapshot} base={base} />}
+      {tab === 'tasks' && (
         <TasksList
           tasks={myTasks}
           snapshot={snapshot}
@@ -102,6 +113,7 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/v4/w
           onIdResolved={handleIdResolved}
         />
       )}
+      {tab === 'meddpicc' && <MeddpiccTab snapshot={snapshot} />}
     </div>
   );
 }
@@ -117,12 +129,13 @@ function TabButton({
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
   count: number;
-  tone: 'claret' | 'forest' | 'cobalt';
+  tone: 'claret' | 'forest' | 'cobalt' | 'brass';
 }) {
   const countTone = count === 0
     ? 'bg-ink/10 text-ink/45'
     : tone === 'claret' ? 'bg-claret/15 text-claret'
     : tone === 'forest' ? 'bg-forest/15 text-forest'
+    : tone === 'brass' ? 'bg-brass/15 text-brass'
     : 'bg-cobalt/15 text-cobalt';
   return (
     <button
@@ -150,7 +163,7 @@ function PriorityList({
 }: {
   deals: Snapshot['deals'];
   snapshot: Snapshot;
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
 }) {
   return (
     <section className="grid gap-4">
@@ -219,7 +232,7 @@ function TasksList({
 }: {
   tasks: Task[];
   snapshot: Snapshot;
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
   isFixtures: boolean;
   onCreated: (task: Task) => void;
   onPatch: (taskId: string, patch: Partial<Task>) => void;

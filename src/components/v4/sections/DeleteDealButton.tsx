@@ -26,7 +26,7 @@ export function DeleteDealButton({
 }: {
   dealId: string;
   dealName: string;
-  base: '/v4/workspace' | '/v4/hub';
+  base: '/workspace' | '/hub';
   isFixtures: boolean;
 }) {
   const router = useRouter();

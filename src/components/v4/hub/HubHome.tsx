@@ -25,90 +25,87 @@ export function HubHome({ snapshot }: { snapshot: Snapshot }) {
     secondary: string;
     accent: string;
   }> = [
-    {
-      href: '/v4/hub/overview',
-      icon: Gauge,
-      label: '總覽',
-      primary: fmtMoney(totalAum),
-      secondary: `${activeDeals.length} 個活躍案件 · 加權 ${fmtMoney(weighted)}`,
-      accent: 'border-l-ink/30',
-    },
-    {
-      href: '/v4/hub/today',
-      icon: Home,
-      label: '今日要做',
-      primary: `${priorityCount + taskCount}`,
-      secondary: `${priorityCount} 個優先客戶 · ${taskCount} 個任務`,
-      accent: priorityCount > 0 ? 'border-l-brass' : 'border-l-ink/15',
-    },
-    {
-      href: '/v4/hub/pipeline',
-      icon: LayoutGrid,
-      label: 'Pipeline',
-      primary: `${deals.length} 件`,
-      secondary: `L1–L7 階段分布 · 紅旗 ${flaggedCount} · 逾期 ${overdueCount}`,
-      accent: 'border-l-cobalt/50',
-    },
-    {
-      href: '/v4/hub/clients',
-      icon: Users,
-      label: '客戶名冊',
-      primary: `${deals.length} 位`,
-      secondary: '按 Tier 分組 · 單頁深入',
-      accent: 'border-l-forest',
-    },
-    {
-      href: '/v4/hub/ai',
-      icon: MessageSquareText,
-      label: 'AI 助手',
-      primary: '問什麼',
-      secondary: '優先順序 · 跟進信件 · 卡關分析',
-      accent: 'border-l-cobalt/50',
-    },
-    {
-      href: '/v4/hub/plan',
-      icon: Route,
-      label: '成交規劃',
-      primary: '生成路徑',
-      secondary: '挑案件 · 自動產出 MEDDIC 步驟',
-      accent: 'border-l-brass/60',
-    },
-    {
-      href: '/v4/hub/market',
-      icon: Briefcase,
-      label: '市場大腦',
-      primary: '3 篇',
-      secondary: '本週情報 · AI 配對建議',
-      accent: 'border-l-ink/15',
-    },
-    {
-      href: '/v4/hub/settings',
-      icon: Settings,
-      label: '設定',
-      primary: `${snapshot.profiles.length} 人 · ${snapshot.teams.length} 隊`,
-      secondary: 'admin 專屬',
-      accent: 'border-l-ink/15',
-    },
-  ];
+      {
+        href: '/hub/overview',
+        icon: Gauge,
+        label: '總覽',
+        primary: fmtMoney(totalAum),
+        secondary: `${activeDeals.length} 個活躍案件 · 加權 ${fmtMoney(weighted)}`,
+        accent: 'border-l-ink/30',
+      },
+      {
+        href: '/hub/today',
+        icon: Home,
+        label: '今日要做',
+        primary: `${priorityCount + taskCount}`,
+        secondary: `${priorityCount} 個優先客戶 · ${taskCount} 個任務`,
+        accent: priorityCount > 0 ? 'border-l-brass' : 'border-l-ink/15',
+      },
+      {
+        href: '/hub/pipeline',
+        icon: LayoutGrid,
+        label: 'Pipeline',
+        primary: `${deals.length} 件`,
+        secondary: `L1–L7 階段分布 · 紅旗 ${flaggedCount} · 逾期 ${overdueCount}`,
+        accent: 'border-l-cobalt/50',
+      },
+      {
+        href: '/hub/clients',
+        icon: Users,
+        label: '客戶名冊',
+        primary: `${deals.length} 位`,
+        secondary: '按 Tier 分組 · 單頁深入',
+        accent: 'border-l-forest',
+      },
+      {
+        href: '/hub/ai',
+        icon: MessageSquareText,
+        label: 'AI 助手',
+        primary: '問什麼',
+        secondary: '優先順序 · 跟進信件 · 卡關分析',
+        accent: 'border-l-cobalt/50',
+      },
+      {
+        href: '/hub/plan',
+        icon: Route,
+        label: '成交規劃',
+        primary: '生成路徑',
+        secondary: '挑案件 · 自動產出 MEDDIC 步驟',
+        accent: 'border-l-brass/60',
+      },
+      {
+        href: '/hub/market',
+        icon: Briefcase,
+        label: '市場大腦',
+        primary: '3 篇',
+        secondary: '本週情報 · AI 配對建議',
+        accent: 'border-l-ink/15',
+      },
+      {
+        href: '/hub/settings',
+        icon: Settings,
+        label: '設定',
+        primary: `${snapshot.profiles.length} 人 · ${snapshot.teams.length} 隊`,
+        secondary: 'admin 專屬',
+        accent: 'border-l-ink/15',
+      },
+    ];
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-12 lg:px-10 lg:py-16">
-      <header className="grid gap-3 pb-12">
+    <div className="mx-auto max-w-[1240px] px-4 py-8 sm:px-6 sm:py-12 lg:px-10 lg:py-16">
+      <header className="grid gap-3 pb-8 sm:pb-12">
         <div className="label-caps text-ink/45">Hub · {today}</div>
-        <h1 className="font-v4-serif text-[64px] font-medium leading-[0.95] tracking-tight text-ink lg:text-[88px]">
-          早安。<span className="italic text-forest">從哪裡開始？</span>
+        <h1 className="font-v4-serif text-[40px] font-medium leading-[0.95] tracking-tight text-ink sm:text-[56px] lg:text-[88px]">
+          <span className="italic text-forest">從哪裡開始？</span>
         </h1>
-        <p className="mt-2 max-w-2xl text-base leading-7 text-ink/65">
-          選一個區塊進去做你要做的事。每個區塊獨立全螢幕，做完按「回 Hub」回來。
-        </p>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (
           <Link
             key={c.href}
             href={c.href}
-            className={`group grid gap-3 rounded-md border border-ink/10 border-l-4 bg-paper p-6 transition hover:-translate-y-0.5 hover:border-ink/25 hover:shadow-panel ${c.accent}`}
+            className={`group grid gap-3 rounded-md border border-ink/10 border-l-4 bg-paper p-5 transition hover:-translate-y-0.5 hover:border-ink/25 hover:shadow-panel sm:p-6 ${c.accent}`}
           >
             <div className="flex items-center justify-between">
               <c.icon className="h-5 w-5 text-ink/55" strokeWidth={1.5} />
@@ -116,7 +113,7 @@ export function HubHome({ snapshot }: { snapshot: Snapshot }) {
             </div>
             <div>
               <div className="label-caps text-ink/55">{c.label}</div>
-              <div className="mt-1 font-v4-serif text-4xl font-semibold leading-tight text-ink numeric">{c.primary}</div>
+              <div className="mt-1 font-v4-serif text-3xl font-semibold leading-tight text-ink numeric sm:text-4xl">{c.primary}</div>
               <div className="mt-2 text-xs text-ink/55 numeric">{c.secondary}</div>
             </div>
           </Link>
@@ -124,11 +121,7 @@ export function HubHome({ snapshot }: { snapshot: Snapshot }) {
       </section>
 
       <footer className="mt-14 grid gap-2 border-t border-ink/10 pt-6 text-xs text-ink/50">
-        <div className="flex items-center gap-3 font-v4-mono">
-          <Sparkles className="h-3 w-3 text-cobalt" strokeWidth={2} />
-          <span>設計原則：一個介面只做一件事。需要做別的事就回 Hub。</span>
-        </div>
-        <div className="flex items-center gap-3 font-v4-mono">
+        <div className="flex flex-wrap items-center gap-3 font-v4-mono">
           {flaggedCount > 0 ? (
             <span className="inline-flex items-center gap-1 text-claret">
               <Flag className="h-3 w-3" strokeWidth={2} /> 今天有 {flaggedCount} 個紅旗

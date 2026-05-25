@@ -30,7 +30,7 @@ const TIER_OPTIONS: Array<{ value: Tier; label: string }> = [
   { value: 'C',   label: 'C · 基礎 Foundation' },
 ];
 
-export function AddDealButton({ base, isFixtures }: { base: '/v4/workspace' | '/v4/hub'; isFixtures: boolean }) {
+export function AddDealButton({ base, isFixtures }: { base: '/workspace' | '/hub'; isFixtures: boolean }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
