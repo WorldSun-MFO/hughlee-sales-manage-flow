@@ -19,11 +19,11 @@ import { ScoresClient } from '@/components/v4/sections/ScoresClient';
 
 type SortKey = 'score_asc' | 'score_desc' | 'aum_desc' | 'tier' | 'stage';
 const SORT_LABELS: Record<SortKey, string> = {
-  score_asc:  '總分低 → 高(預設:需要補強的浮頂)',
+  score_asc: '總分低 → 高',
   score_desc: '總分高 → 低',
-  aum_desc:   'AUM 高 → 低',
-  tier:       'Tier(SSS → C)',
-  stage:      'Stage(L1 → L7)',
+  aum_desc: 'AUM 高 → 低',
+  tier: 'Tier(SSS → C)',
+  stage: 'Stage(L1 → L7)',
 };
 const TIER_ORDER: Record<string, number> = { SSS: 0, S: 1, A: 2, B: 3, C: 4 };
 const STAGE_ORDER: Record<string, number> = { L1: 0, L2: 1, L3: 2, L4: 3, L5: 4, L6: 5, L7: 6 };
@@ -37,11 +37,11 @@ export function MeddpiccTab({ snapshot }: { snapshot: Snapshot }) {
     const list = snapshot.deals.filter((d) => d.stage !== 'L7');
     list.sort((a, b) => {
       switch (sortKey) {
-        case 'score_asc':  return totalScore(a) - totalScore(b);
+        case 'score_asc': return totalScore(a) - totalScore(b);
         case 'score_desc': return totalScore(b) - totalScore(a);
-        case 'aum_desc':   return Number(b.aum_usd) - Number(a.aum_usd);
-        case 'tier':       return (TIER_ORDER[a.tier ?? 'C'] ?? 99) - (TIER_ORDER[b.tier ?? 'C'] ?? 99);
-        case 'stage':      return (STAGE_ORDER[a.stage] ?? 99) - (STAGE_ORDER[b.stage] ?? 99);
+        case 'aum_desc': return Number(b.aum_usd) - Number(a.aum_usd);
+        case 'tier': return (TIER_ORDER[a.tier ?? 'C'] ?? 99) - (TIER_ORDER[b.tier ?? 'C'] ?? 99);
+        case 'stage': return (STAGE_ORDER[a.stage] ?? 99) - (STAGE_ORDER[b.stage] ?? 99);
       }
     });
     return list;
@@ -90,7 +90,7 @@ function DealList({
           <select
             value={sortKey}
             onChange={(e) => onSortChange(e.target.value as SortKey)}
-            className="rounded-md border border-ink/15 bg-paper px-2.5 py-1.5 text-sm text-ink focus:border-ink/40 focus:outline-none"
+            className="rounded-md border border-ink/15 bg-paper px-2.5 py-1.5 label-caps text-ink focus:border-ink/40 focus:outline-none"
           >
             {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
               <option key={k} value={k}>{SORT_LABELS[k]}</option>
