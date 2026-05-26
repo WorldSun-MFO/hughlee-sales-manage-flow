@@ -1,0 +1,90 @@
+# ============================================================
+# PR 品質閘門 — 在合 main 之前先把建置壞掉的 PR 擋下
+# ============================================================
+# 為什麼有這支:
+#   - Vercel 的 preview deploy 是另一條獨立路線,Vercel 自己會在
+#     PR 留 deploy preview 連結 — 那邊壞了 Vercel 會回報
+#   - 這支 workflow 等同 Vercel build 會做的事,但
+#     ① 早於 Vercel(typecheck/lint 先攔下)
+#     ② 不依賴 Vercel 端設定 — 即使有人改壞 Vercel 環境變數也擋得到
+#
+# 跑什麼(由快到慢,fail fast):
+#   1. npm ci                 (按 package-lock.json 安裝,確保版本一致)
+#   2. npm run typecheck      (tsc --noEmit)
+#   3. npm run lint           (next lint;0 警告才放行)
+#   4. npm run test           (vitest;測 lib/utils 與 lib/anthropic/schemas)
+#   5. npm run build          (next build — 同 Vercel)
+#
+# 不跑什麼:
+#   - E2E(沒設定 Playwright/Cypress)
+#   - 實際打 Supabase / Anthropic(會花 token、需要 secret)
+#
+# 為何 build 不需要真實 env vars:
+#   - NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY 會被
+#     Next.js 嵌進 client bundle,給 dummy 不影響 build 通過。
+#   - ANTHROPIC_API_KEY / RESEND_API_KEY 等是 server-only,只有
+#     runtime route handler 呼叫時才會讀,build 不會碰。
+#   - 正式部署的真實值在 Vercel 環境變數設定。
+#
+# 觸發時機:
+#   - 任何 PR 開到 main → 自動跑
+#   - main 自己被 push 也跑一次(萬一有人繞過 PR 直接推)
+#   - 手動觸發(Actions 頁面 → Run workflow)
+# ============================================================
+
+name: PR check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一個 PR 連續推多次只跑最後一次,省 Action 額度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Type check / Lint / Test / Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # 與 Vercel 預設一致(Vercel Next.js runtime 走 Node 20+)
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        # 任何 warning / error 都當紅燈(專案目前 0 警告,基準守住)
+        run: npm run lint
+
+      - name: Unit tests
+        # vitest 跑 lib/utils 與 lib/anthropic/schemas 的測試
+        # 純函式 / Zod schema,不需要 env vars,失敗 → 擋 PR
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          # Next.js build 時會把 NEXT_PUBLIC_* 字串塞進 bundle,
+          # 給 dummy 即可 — 正式部署值在 Vercel 端,不走這裡。
+          NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci-build-only
+          # 下列 server-only env 不在 build time 讀,留空即可:
+          #   ANTHROPIC_API_KEY / OPENAI_API_KEY / RESEND_API_KEY /
+          #   SUPABASE_SERVICE_ROLE_KEY / CRON_SECRET / RESEND_FROM_ADDRESS
