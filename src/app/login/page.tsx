@@ -1,10 +1,18 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // dev-only:把 supabase client 掛到 window,讓人可在 DevTools console
+  // 直接 `await window.supabase.auth.signInWithPassword({ email, password })` 試登入。
+  // 正式環境(NODE_ENV !== 'development')不會跑這段。
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    (window as unknown as { supabase: ReturnType<typeof createClient> }).supabase = createClient();
+  }, []);
 
   async function signInWithGoogle() {
     setError(null);

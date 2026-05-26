@@ -4,6 +4,8 @@ import type { PainPoint, Profile, Role, Settings, StageId, Team, Tier, TierConfi
 import { STAGES, TIER_STYLES } from '@/lib/constants';
 import { fmtMoney } from '@/lib/utils';
 
+// admin / team_lead / rm 設定頁，權限控制
+
 interface Props {
   settings: Settings;
   profile: Profile;
@@ -249,8 +251,8 @@ export function SettingsModal({ settings, profile, allProfiles, painPoints, team
                           ) : (
                             <span className={
                               p.role === 'admin' ? 'text-rose-600 font-semibold'
-                              : p.role === 'team_lead' ? 'text-indigo-600 font-semibold'
-                              : 'text-slate-500'
+                                : p.role === 'team_lead' ? 'text-indigo-600 font-semibold'
+                                  : 'text-slate-500'
                             }>{ROLE_LABEL[p.role]}</span>
                           )}
                         </td>

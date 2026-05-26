@@ -3,7 +3,21 @@ node_modules/
 out/
 .env.local
 .env*.local
+.env.dev
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
 .vercel
+/.claude
+
+# 本機開發專用,把 22 支 migration 串成一份方便一次貼進 Supabase SQL Editor
+supabase/_local_bundle.sql
+supabase/_audit_log_setup.sql
+supabase/_local_seed.sql
+supabase/_local_seed_deals_only.sql
+supabase/_local_rich_seed.sql
+
+# 任何 prod / backup dump,絕不能進 repo
+*_backup*.sql
+*_dump*.sql
+ws_crm_prod_*
