@@ -10,7 +10,7 @@ export default async function HubTasksPage() {
     <>
       <HubTopBar pageLabel="我的任務" source={snap.source} profile={profile} />
       <div className="mx-auto max-w-[1240px]">
-        <TasksView snapshot={snap} base="/hub" />
+        <TasksView snapshot={snap} base="/hub" profile={profile} />
       </div>
     </>
   );
