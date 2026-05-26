@@ -31,7 +31,8 @@ export function OverviewView({ snapshot, base }: { snapshot: Snapshot; base: '/w
             {fmtMoney(totalAum)}
           </div>
           <div className="mt-2 max-w-md text-sm leading-6 text-ink/55">
-            不含 L7（已成交）的所有在跑案件加總。實際成交金額視階段機率加權。
+            <br />不含 L7（已成交）的所有在跑案件加總 <br />
+            實際成交金額視階段機率加權
           </div>
         </div>
       </section>

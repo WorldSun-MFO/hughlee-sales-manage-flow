@@ -45,7 +45,12 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/work
         <p className="max-w-2xl text-base leading-7 text-ink/65">
           {priorityDeals.length > 0
             ? `${priorityDeals.length} 個客戶需要關注`
-            : '所有客戶都健康。今天可以選擇主動轉介或精進案件品質。'}
+            : '所有客戶都健康'}
+        </p>
+        <p className="max-w-2xl text-base leading-7 text-ink/65">
+          {priorityDeals.length > 0
+            ? ''
+            : '今天可以選擇主動轉介或精進案件品質'}
         </p>
       </header>
 
@@ -91,9 +96,9 @@ function TabButton({
   const countTone = count === 0
     ? 'bg-ink/10 text-ink/45'
     : tone === 'claret' ? 'bg-claret/15 text-claret'
-    : tone === 'forest' ? 'bg-forest/15 text-forest'
-    : tone === 'brass' ? 'bg-brass/15 text-brass'
-    : 'bg-cobalt/15 text-cobalt';
+      : tone === 'forest' ? 'bg-forest/15 text-forest'
+        : tone === 'brass' ? 'bg-brass/15 text-brass'
+          : 'bg-cobalt/15 text-cobalt';
   return (
     <button
       type="button"
@@ -127,7 +132,7 @@ function PriorityList({
       <div className="label-caps text-ink/55">優先客戶 · {deals.length} 位 · 按急迫度排序</div>
       {deals.length === 0 ? (
         <div className="rounded-md border border-forest/30 bg-forest/5 px-6 py-12 text-center text-sm font-semibold text-forest">
-          🎉 沒有待追蹤的案件,全部健康。
+          沒有待追蹤的案件
         </div>
       ) : (
         <ul className="grid gap-2">
@@ -136,7 +141,7 @@ function PriorityList({
             const tone = reason?.tone ?? 'amber';
             const accent = tone === 'rose' ? 'border-l-claret bg-claret/4'
               : tone === 'orange' ? 'border-l-brass bg-brass/4'
-              : 'border-l-ink/30 bg-cream/40';
+                : 'border-l-ink/30 bg-cream/40';
             return (
               <li key={d.id}>
                 <Link

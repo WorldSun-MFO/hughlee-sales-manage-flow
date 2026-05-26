@@ -57,7 +57,7 @@ export function SettingsView({
           設定
         </h1>
         <p className="max-w-2xl text-base leading-7 text-ink/65">
-          {isAdmin ? '管理員視角:可改全站配置、團隊與成員。' : '一般視角:只顯示自己的 profile;團隊 / 成員 / 全站設定須 admin。'}
+          {isAdmin ? '管理員視角:可改全站配置、團隊與成員。' : '資料設定，修改請洽管理員或 team lead'}
         </p>
       </header>
 
@@ -89,12 +89,6 @@ export function SettingsView({
 
       {/* 4. Members */}
       {isAdmin && <MembersSection snapshot={snapshot} isFixtures={isFixtures} memberStatus={memberStatus} />}
-
-      {!isAdmin && (
-        <div className="rounded-md border border-dashed border-ink/15 bg-paper/60 px-6 py-10 text-center text-sm text-ink/45">
-          全站設定 / 團隊 / 成員管理需要 admin 權限。
-        </div>
-      )}
     </div>
   );
 }

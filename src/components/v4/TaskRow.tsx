@@ -19,6 +19,7 @@ import { Trash2, Check } from 'lucide-react';
 import type { Task, TaskStatus, TaskPriority, Snapshot } from '@/lib/v4/types';
 import { cn, daysUntil } from '@/lib/v4/utils';
 import { patchTask, deleteTask, createTask } from '@/lib/v4/mutations';
+import { InlineText } from '@/components/v4/InlineEdit';
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'todo', label: '待辦' },
@@ -172,9 +173,17 @@ export function TaskRow({
       </button>
 
       <div className="grid min-w-0 gap-1.5">
-        <div className={cn('font-v4-serif text-base font-medium text-ink', done && 'text-ink/45 line-through')}>
-          {task.title}
-        </div>
+        <InlineText
+          value={task.title}
+          onSave={async (next) => {
+            const title = next.trim();
+            if (!title) throw new Error('標題不可空白');
+            onLocalPatch?.(task.id, { title });
+            await patchTask(task.id, { title });
+          }}
+          isFixtures={locked}
+          displayClassName={cn('font-v4-serif text-base font-medium', done ? 'text-ink/45 line-through' : 'text-ink')}
+        />
         <div className="flex flex-wrap items-center gap-1.5">
           {linkedDeal && (
             <Link href={`${base}/clients/${linkedDeal.id}` as never} className="inline-flex items-center gap-1 font-v4-mono text-[11px] text-ink/55 hover:text-ink">

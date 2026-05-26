@@ -8,8 +8,10 @@ const nextConfig = {
   // Next.js 15 內建。控制「在路由間切換時,已造訪過的頁面在 client 端
   // 保留多久不重抓 server」。
   //
-  //   dynamic: 30  → 動態頁(force-dynamic 的全 v4 路由 / 主 Dashboard)
-  //                  client cache 30 秒。30 秒內回頭點之前的客戶 = 0ms
+  //   dynamic: 60  → 動態頁(force-dynamic 的全 v4 路由 / 主 Dashboard)
+  //                  client cache 60 秒。60 秒內回頭點之前的頁 = 0ms(不重抓)
+  //                  主工作頁(今日/任務/客戶…)都有 RealtimeRefresher,
+  //                  DB 一變就 router.refresh() 失效快取,所以拉長不會看到舊資料
   //   static: 180  → 靜態頁(/login、/demo-gate)cache 3 分鐘
   //
   // 失效時機(全自動,不需手動處理):
@@ -25,7 +27,7 @@ const nextConfig = {
   // ============================================================
   experimental: {
     staleTimes: {
-      dynamic: 30,
+      dynamic: 60,
       static: 180,
     },
   },

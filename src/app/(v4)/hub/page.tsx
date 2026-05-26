@@ -9,7 +9,7 @@ export default async function HubHomePage() {
   return (
     <>
       <HubTopBar source={snap.source} profile={profile} />
-      <HubHome snapshot={snap} />
+      <HubHome snapshot={snap} profile={profile} />
     </>
   );
 }

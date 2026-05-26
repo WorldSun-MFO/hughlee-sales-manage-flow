@@ -40,11 +40,11 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/w
     list = list.slice().sort((a, b) => {
       switch (sortKey) {
         case 'aum_desc': return Number(b.aum_usd) - Number(a.aum_usd);
-        case 'aum_asc':  return Number(a.aum_usd) - Number(b.aum_usd);
+        case 'aum_asc': return Number(a.aum_usd) - Number(b.aum_usd);
         case 'updated_desc': return daysSince(a.last_updated) - daysSince(b.last_updated);
-        case 'updated_asc':  return daysSince(b.last_updated) - daysSince(a.last_updated);
+        case 'updated_asc': return daysSince(b.last_updated) - daysSince(a.last_updated);
         case 'score_desc': return totalScore(b) - totalScore(a);
-        case 'score_asc':  return totalScore(a) - totalScore(b);
+        case 'score_asc': return totalScore(a) - totalScore(b);
       }
     });
     return list;
@@ -66,7 +66,7 @@ export function PipelineView({ snapshot, base }: { snapshot: Snapshot; base: '/w
           銷售漏斗
         </h1>
         <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">
-          按 L1–L7 階段分佈、各階段加總 AUM、可篩選的全案件清單。
+          按 L1–L7 階段分佈、各階段加總 AUM、可篩選的全案件清單
         </p>
       </header>
 

@@ -20,22 +20,22 @@ const STANCE_TONE: Record<IntelStance, string> = {
   bullish: 'border-forest/40 bg-forest/8 text-forest',
   bearish: 'border-claret/40 bg-claret/8 text-claret',
   neutral: 'border-brass/40 bg-brass/8 text-brass',
-  na:      'border-ink/15 bg-ink/3 text-ink/55',
+  na: 'border-ink/15 bg-ink/3 text-ink/55',
 };
 const STANCE_LABEL: Record<IntelStance, string> = {
   bullish: '看多',
   bearish: '看空',
   neutral: '中性',
-  na:      '未標',
+  na: '未標',
 };
 const REGION_LABEL: Record<IntelRegion, string> = {
   TW: '🇹🇼 台股', US: '🇺🇸 美股', JP: '🇯🇵 日股', CN: '🇨🇳 陸股', GLOBAL: '🌐 全球',
 };
 const SOURCE_TYPE_LABEL: Record<IntelSourceType, string> = {
   broker_research: '📑 券商研報',
-  media:           '📰 財經媒體',
-  filing:          '🏛 公開財報',
-  internal:        '✍️ 內部筆記',
+  media: '📰 財經媒體',
+  filing: '🏛 公開財報',
+  internal: '✍️ 內部筆記',
 };
 const REGION_OPTIONS: IntelRegion[] = ['TW', 'US', 'JP', 'CN', 'GLOBAL'];
 const STANCE_OPTIONS: IntelStance[] = ['bullish', 'bearish', 'neutral', 'na'];
@@ -78,8 +78,7 @@ export function MarketView({
           市場大腦
         </h1>
         <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">
-          每 3 小時自動抓 RSS / API 來源 → AI 萃取摘要 → 與客戶配對。
-          {' '}<span className="font-v4-mono text-[12px] text-ink/45">(cron 走 /api/cron/ingest-market)</span>
+          每 3 小時自動抓來源 → AI 萃取摘要 → 與客戶配對
         </p>
       </header>
 
@@ -176,7 +175,7 @@ function ActionCard({
 }) {
   const iconBg = tone === 'cobalt' ? 'bg-cobalt/10 text-cobalt'
     : tone === 'forest' ? 'bg-forest/10 text-forest'
-    : 'bg-ink/10 text-ink';
+      : 'bg-ink/10 text-ink';
   return (
     <Link
       href={href as never}

@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { ArrowUpRight, Briefcase, ClipboardList, Flag, Gauge, Home, LayoutGrid, MessageSquareText, Phone, Route, Settings, Sparkles, TrendingUp, Users } from 'lucide-react';
-import type { Snapshot, StageId } from '@/lib/v4/types';
+import type { Profile, Snapshot, StageId } from '@/lib/v4/types';
 import { contactOverdue, fmtMoney, redFlag, urgencyScore } from '@/lib/v4/utils';
 
-export function HubHome({ snapshot }: { snapshot: Snapshot }) {
+export function HubHome({ snapshot, profile }: { snapshot: Snapshot; profile: Profile | null }) {
   const deals = snapshot.deals;
   const activeDeals = deals.filter((d) => d.stage !== 'L7');
   const totalAum = activeDeals.reduce((s, d) => s + Number(d.aum_usd), 0);
@@ -16,6 +16,22 @@ export function HubHome({ snapshot }: { snapshot: Snapshot }) {
   const taskCount = snapshot.tasks.filter((t) => t.status !== 'done').length;
 
   const today = new Date().toLocaleDateString('zh-Hant-TW', { month: 'long', day: 'numeric', weekday: 'long' });
+
+  // 設定卡的成員/分隊數依「角色」呈現:
+  //   admin → 全部成員與分隊;team_lead → 自己團隊的成員;RM → 只看自己
+  // (無 profile = demo/fixtures,當 admin 顯示全部)
+  const role = profile?.role ?? 'admin';
+  const teamMemberCount = profile?.team_id
+    ? snapshot.profiles.filter((p) => p.team_id === profile.team_id).length
+    : 1;
+  const settingsPrimary =
+    role === 'admin' ? `${snapshot.profiles.length} 人 · ${snapshot.teams.length} 隊`
+      : role === 'team_lead' ? `${teamMemberCount} 人`
+        : '';
+  const settingsSecondary =
+    role === 'admin' ? '全部成員與分隊 · admin'
+      : role === 'team_lead' ? '你的團隊成員'
+        : '個人設定';
 
   const cards: Array<{
     href: string;
@@ -93,8 +109,8 @@ export function HubHome({ snapshot }: { snapshot: Snapshot }) {
         href: '/hub/settings',
         icon: Settings,
         label: '設定',
-        primary: `${snapshot.profiles.length} 人 · ${snapshot.teams.length} 隊`,
-        secondary: 'admin 專屬',
+        primary: settingsPrimary,
+        secondary: settingsSecondary,
         accent: 'border-l-ink/15',
       },
     ];

@@ -7,6 +7,7 @@ import { Calendar, Loader2, ListTodo } from 'lucide-react';
 import type { Deal } from '@/lib/v4/types';
 import { InlineTextarea, InlineDate } from '@/components/v4/InlineEdit';
 import { createTask, patchDeal, splitNextStepIntoTasks } from '@/lib/v4/mutations';
+import { createClient } from '@/lib/supabase/client';
 
 export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: boolean }) {
   const router = useRouter();
@@ -19,14 +20,17 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
     if (!deal.next_step || splitBusy) return;
     if (isFixtures) { setSplitMsg('fixtures 模式無法寫入'); setTimeout(() => setSplitMsg(null), 2500); return; }
     const titles = splitNextStepIntoTasks(deal.next_step);
-    if (titles.length === 0) { setSplitMsg('下一步沒有可拆的內容'); setTimeout(() => setSplitMsg(null), 2500); return; }
+    if (titles.length === 0) { setSplitMsg('下一步沒有可加入的內容'); setTimeout(() => setSplitMsg(null), 2500); return; }
     setSplitBusy(true); setSplitMsg(null);
     try {
+      // 指派給目前登入者,讓任務出現在側邊欄「我的任務」自己名下
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
       for (const title of titles) {
-        await createTask({ deal_id: deal.id, title, priority: 'normal', status: 'todo' });
+        await createTask({ deal_id: deal.id, title, assignee_id: user?.id ?? null, priority: 'normal', status: 'todo' });
       }
-      setSplitMsg(`✓ 已新增 ${titles.length} 個任務`); refresh();
-      setTimeout(() => setSplitMsg(null), 2500);
+      setSplitMsg(`✓ 已加入我的任務(${titles.length} 件)`); refresh();
+      setTimeout(() => setSplitMsg(null), 3000);
     } catch (err) { setSplitMsg(`失敗:${(err as Error).message}`); }
     finally { setSplitBusy(false); }
   }
@@ -40,11 +44,11 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
             type="button"
             onClick={handleSplit}
             disabled={splitBusy || isFixtures}
-            title="把多行下一步拆成獨立任務"
+            title="把這個客戶的下一步加入「我的任務」(多行會拆成多筆,指派給自己)"
             className="inline-flex items-center gap-1.5 rounded-md border border-ink/15 bg-paper px-2.5 py-1 font-v4-mono text-[11px] font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {splitBusy ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> : <ListTodo className="h-3 w-3" strokeWidth={2} />}
-            {splitBusy ? '建立中…' : '拆成任務'}
+            {splitBusy ? '加入中…' : '加到我的任務'}
           </button>
         )}
       </div>

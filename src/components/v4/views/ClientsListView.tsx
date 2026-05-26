@@ -44,11 +44,11 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
     return list.slice().sort((a, b) => {
       switch (sortKey) {
         case 'aum_desc': return Number(b.aum_usd) - Number(a.aum_usd);
-        case 'aum_asc':  return Number(a.aum_usd) - Number(b.aum_usd);
+        case 'aum_asc': return Number(a.aum_usd) - Number(b.aum_usd);
         case 'updated_desc': return daysSince(a.last_updated) - daysSince(b.last_updated);
-        case 'updated_asc':  return daysSince(b.last_updated) - daysSince(a.last_updated);
+        case 'updated_asc': return daysSince(b.last_updated) - daysSince(a.last_updated);
         case 'score_desc': return totalScore(b) - totalScore(a);
-        case 'score_asc':  return totalScore(a) - totalScore(b);
+        case 'score_asc': return totalScore(a) - totalScore(b);
         case 'name_asc': return a.name.localeCompare(b.name);
       }
     });
@@ -72,7 +72,8 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
           </div>
         </div>
         <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">
-          以等級分組。每位客戶獨立頁面承載 MEDDIC 評分、對話紀錄、AI 路徑、任務。
+          以等級分組<br />
+          每位客戶獨立頁面承載 MEDDIC 評分、對話紀錄、AI 路徑、任務
         </p>
       </header>
 
@@ -127,7 +128,7 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
 
       {filtered.length === 0 ? (
         <div className="rounded-md border border-dashed border-ink/15 bg-paper/60 px-6 py-12 text-center text-sm text-ink/45">
-          沒有符合條件的客戶。{hasFilter && '清除篩選看全部 ↑'}
+          沒有符合條件的客戶{hasFilter && '清除篩選看全部 ↑'}
         </div>
       ) : (
         TIERS_ORDER.map((tier) => {

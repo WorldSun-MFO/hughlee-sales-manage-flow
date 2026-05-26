@@ -154,7 +154,7 @@ export function TasksView({
         </h1>
         <p className="max-w-2xl text-base leading-7 text-ink/65">
           {tasksLocal.length === 0
-            ? '目前沒有任務。'
+            ? '目前沒有任務'
             : `符合條件 ${filtered.length} 件 · ${filteredOpen} 個未完成`}
         </p>
       </header>
