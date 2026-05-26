@@ -41,13 +41,18 @@ import { fixtureSnapshot } from '@/lib/v4/fixtures';
 // ============================================================
 // 共用 helper:取 authenticated supabase 或 null
 // ============================================================
-const getAuthed = cache(async () => {
+// auth.getUser() 是一趟到 Supabase Auth 的網路驗證。集中在這裡並用 React.cache 包,
+// 讓同一次 render 內所有 fetcher(getAuthed)與 getCurrentProfile 共用「一次驗證」,
+// 不再各打各的(原本 layout 的 getCurrentProfile + 頁面的 getAuthed 會驗兩次)。
+const getAuthContext = cache(async (): Promise<{ supabase: Awaited<ReturnType<typeof createClient>>; userId: string } | null> => {
   if (IS_DEMO) return null;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  return supabase;
+  return { supabase, userId: user.id };
 });
+
+const getAuthed = cache(async () => (await getAuthContext())?.supabase ?? null);
 
 // ============================================================
 // 列表頁專用:輕量版 deals(沒 comments / attachments / checklist / questions)
@@ -239,12 +244,10 @@ export const getSettings = cache(async (): Promise<SettingsRow | null> => {
 });
 
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
-  if (IS_DEMO) return null;
+  const ctx = await getAuthContext();   // 共用同一次 auth 驗證,不再額外打一趟 getUser
+  if (!ctx) return null;
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+    const { data } = await ctx.supabase.from('profiles').select('*').eq('id', ctx.userId).single();
     return (data as Profile | null) ?? null;
   } catch { return null; }
 });
