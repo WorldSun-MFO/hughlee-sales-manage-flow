@@ -174,7 +174,7 @@ function TalkingPointCard({
         type="button"
         onClick={accept}
         disabled={isFixtures || linkState === 'busy' || linkState === 'done'}
-        title={linkState === 'done' ? '已關聯到本案件' : '把這篇 intel 正式關聯到本案件(寫入 intel_deal_links)'}
+        title={linkState === 'done' ? '已關聯到本案件' : ''}
         className={cn(
           'inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition shrink-0',
           linkState === 'done'
@@ -187,7 +187,7 @@ function TalkingPointCard({
       >
         {linkState === 'busy' ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
           : linkState === 'done' ? <Check className="h-3 w-3" strokeWidth={2.5} />
-          : <Sparkles className="h-3 w-3" strokeWidth={2} />}
+            : <Sparkles className="h-3 w-3" strokeWidth={2} />}
         {linkState === 'done' ? '已採納' : linkState === 'error' ? '再試' : '採納關聯'}
       </button>
     </li>

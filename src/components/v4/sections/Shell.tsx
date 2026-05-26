@@ -56,9 +56,12 @@ export function ClientDetailShell({
 
   const backLabel = backHref.includes('pipeline') ? '回 Pipeline'
     : backHref.includes('today') ? '回今日' : '回客戶名冊';
+  // workspace 版型左側有 264px sidebar,固定底欄要避開;hub 版型(top bar)整寬
+  const isWorkspace = backHref.startsWith('/workspace');
 
   return (
-    <div className="grid gap-10 px-8 py-10 lg:px-14 lg:py-14">
+    // pb-28 預留固定底欄高度,避免最後一個 section 被蓋住
+    <div className="grid gap-10 px-8 pt-10 pb-28 lg:px-14 lg:pt-14">
       <RealtimeRefresher isFixtures={isFixtures} />
 
       <div>
@@ -69,8 +72,11 @@ export function ClientDetailShell({
 
       {children}
 
-      {/* sticky action bar */}
-      <section className="sticky bottom-0 -mx-8 grid grid-cols-3 gap-2 border-t border-ink/10 bg-cream/95 px-8 py-4 backdrop-blur lg:-mx-14 lg:px-14">
+      {/* 固定底欄 — 釘在可視畫面最底、跟著滾動;workspace 版型避開左側 sidebar */}
+      <section className={cn(
+        'fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 gap-2 border-t border-ink/10 bg-cream/95 px-8 py-4 backdrop-blur lg:px-14',
+        isWorkspace && 'lg:left-[264px]',
+      )}>
         <Action icon={contactBusy ? Loader2 : Phone} iconClass={contactBusy ? 'animate-spin' : undefined} tone="paper" onClick={handleMarkContacted} disabled={contactBusy}>
           {contactBusy ? '更新中…' : '剛聯繫'}
         </Action>
