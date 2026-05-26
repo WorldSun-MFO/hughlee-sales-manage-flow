@@ -3,7 +3,7 @@
 // Header 區的 inline edit 部分(client island)
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Deal, StageId, Tier } from '@/lib/v4/types';
+import type { Deal, Profile, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { TIER_STYLES } from '@/lib/v4/utils';
 import { InlineText, InlineSelect } from '@/components/v4/InlineEdit';
@@ -17,10 +17,30 @@ const TIER_OPTIONS = [
   { value: 'C' as Tier, label: 'C · 基礎' },
 ];
 
-export function HeaderClient({ deal, isFixtures }: { deal: Deal; isFixtures: boolean }) {
+export function HeaderClient({
+  deal, isFixtures, profile, profiles,
+}: {
+  deal: Deal;
+  isFixtures: boolean;
+  profile: Profile | null;
+  profiles: Profile[];
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const refresh = () => undefined; // fire-and-forget;不再 router.refresh,改靠本地 optimistic state
+
+  // 可改派的 RM 名單(對齊 deals_update RLS:admin=全部、team_lead=自己團隊、rm=不能改派)
+  const role = profile?.role;
+  const assignable = !profile ? []
+    : role === 'admin' ? profiles
+      : role === 'team_lead' ? profiles.filter((p) => p.id === profile.id || (!!profile.team_id && p.team_id === profile.team_id))
+        : [];
+  const canPickRm = (role === 'admin' || role === 'team_lead') && assignable.length > 1;
+  const nameOf = (id: string | null) => {
+    if (!id) return '—';
+    const p = profiles.find((x) => x.id === id);
+    return p?.full_name || p?.email || '—';
+  };
 
   return (
     <header className="grid gap-3">
@@ -63,7 +83,20 @@ export function HeaderClient({ deal, isFixtures }: { deal: Deal; isFixtures: boo
           placeholder="(未填產品)"
           displayClassName="font-v4-mono text-sm text-ink"
         />
-        <span className="font-v4-mono text-xs text-ink/45">RM · {deal.rm?.full_name ?? '—'}</span>
+        {canPickRm ? (
+          <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
+            RM ·
+            <InlineSelect<string>
+              value={deal.rm_id}
+              options={assignable.map((p) => ({ value: p.id, label: p.full_name || p.email }))}
+              onSave={async (next) => { if (next) { await patchDeal(deal.id, { rm_id: next }); refresh(); } }}
+              isFixtures={isFixtures}
+              renderDisplay={(v) => <span className="font-semibold text-ink/70">{nameOf(v)}</span>}
+            />
+          </span>
+        ) : (
+          <span className="font-v4-mono text-xs text-ink/45">RM · {deal.rm?.full_name ?? '—'}</span>
+        )}
       </div>
     </header>
   );

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Search } from 'lucide-react';
-import type { Snapshot, StageId, Tier } from '@/lib/v4/types';
+import type { Profile, Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGES } from '@/lib/v4/constants';
 import { daysSince, fmtMoney, totalScore, TIER_STYLES } from '@/lib/v4/utils';
 import { AddDealButton } from '@/components/v4/AddDealButton';
@@ -13,7 +13,7 @@ type SortKey = 'aum_desc' | 'aum_asc' | 'updated_desc' | 'updated_asc' | 'score_
 
 const TIERS_ORDER: Tier[] = ['SSS', 'S', 'A', 'B', 'C'];
 
-export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: '/workspace' | '/hub' }) {
+export function ClientsListView({ snapshot, base, profile }: { snapshot: Snapshot; base: '/workspace' | '/hub'; profile: Profile | null }) {
   const isFixtures = snapshot.source === 'fixtures';
   const [q, setQ] = useState('');
   const [stage, setStage] = useState<StageId | ''>('');
@@ -68,7 +68,7 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
             </h1>
           </div>
           <div className="pt-2 shrink-0">
-            <AddDealButton base={base} isFixtures={isFixtures} />
+            <AddDealButton base={base} isFixtures={isFixtures} profile={profile} profiles={snapshot.profiles} />
           </div>
         </div>
         <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">

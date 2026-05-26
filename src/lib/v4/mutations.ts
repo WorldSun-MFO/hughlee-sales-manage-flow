@@ -305,13 +305,15 @@ export interface NewDealInput {
   next_step?: string | null;
   target_close_date?: string | null;
   first_contact?: string;
+  rm_id?: string;   // 指派的 RM;未提供則 = 當前登入者。最終由 deals_insert RLS 把關
 }
 
 /**
  * 建立新案件。
  *
  * 自動值:
- *   - rm_id = 當前登入者(從 auth.getUser 取)
+ *   - rm_id = input.rm_id ?? 當前登入者;能否指派給別人由 deals_insert RLS 決定
+ *     (admin=任何人;team_lead=自己團隊內 RM;rm=只能自己)
  *   - stage = L1
  *   - first_contact = 今天(若未提供)
  *   - scores 子表會同步建立一筆全 0 的 row
@@ -330,7 +332,7 @@ export async function createDeal(input: NewDealInput): Promise<string> {
     .from('deals')
     .insert({
       name: input.name,
-      rm_id: user.id,
+      rm_id: input.rm_id ?? user.id,
       aum_usd: input.aum_usd,
       tier: input.tier ?? null,
       stage: 'L1' as StageId,
