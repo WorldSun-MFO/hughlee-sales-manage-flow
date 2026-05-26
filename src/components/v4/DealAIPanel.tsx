@@ -17,6 +17,7 @@ import type { Deal, Scores, StageId } from '@/lib/v4/types';
 import { fmtMoney, cn } from '@/lib/v4/utils';
 import { STAGES } from '@/lib/v4/constants';
 import { AttachmentTray } from '@/components/v4/AttachmentTray';
+import { AutoTextarea } from '@/components/v4/AutoTextarea';
 import type { UploadedAttachment } from '@/lib/v4/upload';
 import { patchDeal, patchScores, addComment } from '@/lib/v4/mutations';
 
@@ -51,16 +52,20 @@ export function DealAIPanel({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ParseResult | null>(null);
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+  // 快照「按分析當下」的原話:之後就算又改了輸入框,套用時存進活動紀錄的仍是被分析的那段
+  const [analyzedText, setAnalyzedText] = useState('');
 
   async function analyze() {
     if (!text.trim() || busy) return;
     if (isFixtures) { setError('目前是 fixtures 模式(未接 Supabase),AI 分析需要登入 + 真實案件'); return; }
+    const submitted = text.trim();
     setBusy(true); setError(null); setResult(null);
+    setAnalyzedText(submitted);
     try {
       const res = await fetch('/api/ai/parse-interaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dealId: deal.id, userText: text.trim() }),
+        body: JSON.stringify({ dealId: deal.id, userText: submitted }),
       });
       const raw = await res.text();
       let json: { data?: ParseResult; error?: string };
@@ -92,12 +97,11 @@ export function DealAIPanel({
       <section className="grid gap-3 rounded-md border border-ink/10 bg-paper p-5">
         <label className="grid gap-2">
           <span className="label-caps text-ink/55">這次的互動描述</span>
-          <textarea
+          <AutoTextarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            rows={7}
             placeholder="例如:今天下午打電話給陳先生,他說他考慮加碼到 300 萬美金,但太太還沒點頭。下週三要一起吃晚餐讓我見太太。他擔心銀行抽銀根,問我宏利財摯宏耀有沒有 Margin Call 條款..."
-            className="w-full resize-vertical rounded-md border border-ink/12 bg-cream/40 px-3.5 py-3 text-sm leading-6 text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
+            className="min-h-[9.5rem] w-full rounded-md border border-ink/12 bg-cream/40 px-3.5 py-3 text-sm leading-6 text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
             disabled={busy}
           />
         </label>
@@ -129,11 +133,12 @@ export function DealAIPanel({
       {result && (
         <ParseResultPanel
           result={result}
+          userText={analyzedText}
           dealId={deal.id}
           dealName={deal.name}
           isFixtures={isFixtures}
           viewDealHref={viewDealHref}
-          onApplied={() => setResult(null)}
+          onApplied={() => { setResult(null); setText(''); }}
         />
       )}
 
@@ -148,9 +153,10 @@ export function DealAIPanel({
 }
 
 function ParseResultPanel({
-  result, dealId, dealName, isFixtures, viewDealHref, onApplied,
+  result, userText, dealId, dealName, isFixtures, viewDealHref, onApplied,
 }: {
   result: ParseResult;
+  userText: string;
   dealId: string;
   dealName: string;
   isFixtures: boolean;
@@ -159,7 +165,9 @@ function ParseResultPanel({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const hasRaw = userText.trim().length > 0;
   // 預設全部勾選(讓 RM 一鍵 apply,不想要的再個別取消)
+  const [pickRaw, setPickRaw] = useState(true);
   const [pickScores, setPickScores] = useState<boolean[]>(() => result.score_updates.map(() => true));
   const [pickComment, setPickComment] = useState(!!result.new_comment);
   const [pickNextStep, setPickNextStep] = useState(result.next_step_update !== null);
@@ -167,8 +175,11 @@ function ParseResultPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // AI 摘要 / 建議下一步 改為可編輯:初始帶 AI 產出的文字,套用時用編輯後的值
+  const [comment, setComment] = useState(result.new_comment);
+  const [nextStep, setNextStep] = useState(result.next_step_update ?? '');
 
-  const totalPicks = pickScores.filter(Boolean).length + (pickComment ? 1 : 0) + (pickNextStep ? 1 : 0) + (pickStage ? 1 : 0);
+  const totalPicks = (hasRaw && pickRaw ? 1 : 0) + pickScores.filter(Boolean).length + (pickComment ? 1 : 0) + (pickNextStep ? 1 : 0) + (pickStage ? 1 : 0);
 
   async function applyAll() {
     if (busy || isFixtures) {
@@ -184,16 +195,26 @@ function ParseResultPanel({
       });
       if (Object.keys(scoresPatch).length > 0) await patchScores(dealId, scoresPatch);
 
-      // deal 欄位
+      // deal 欄位(下一步用編輯後的文字;清空則略過,不覆寫成空)
       const dealPatch: { next_step?: string | null; stage?: StageId } = {};
-      if (pickNextStep && result.next_step_update !== null) dealPatch.next_step = result.next_step_update;
+      if (pickNextStep && nextStep.trim()) dealPatch.next_step = nextStep.trim();
       if (pickStage && result.stage_suggestion) dealPatch.stage = result.stage_suggestion;
       if (Object.keys(dealPatch).length > 0) await patchDeal(dealId, dealPatch);
 
-      // comment
-      if (pickComment && result.new_comment) await addComment(dealId, result.new_comment, { isRaw: false });
+      // 活動紀錄:以 AI 摘要為主,原話一併存進同一筆的 raw_body
+      // (活動紀錄可 hover 預覽 / 點開看全文)
+      const summaryText = comment.trim();
+      const rawText = pickRaw && userText.trim() ? userText.trim() : null;
+      if (pickComment && summaryText) {
+        await addComment(dealId, summaryText, { rawBody: rawText });
+      } else if (rawText) {
+        // 只勾原話、沒摘要 → 單獨存一筆原話
+        await addComment(dealId, rawText, { isRaw: true });
+      }
 
       setDone(true);
+      // 寫回後刷新 server components,讓「下一步」/ 活動紀錄 / 分數 立刻反映,不必手動重整
+      startTransition(() => router.refresh());
       // 有 viewDealHref(sidebar 用)時,保留結果讓使用者看連結;
       // Drawer 用(沒 href)1.5 秒後自動收掉。
       if (!viewDealHref) {
@@ -244,12 +265,26 @@ function ParseResultPanel({
         </article>
       )}
 
+      {hasRaw && (
+        <article className={cn('grid grid-cols-[auto_1fr] items-start gap-3 rounded-md border border-ink/10 bg-paper p-4 transition', !pickRaw && 'opacity-40')}>
+          <PickBox checked={pickRaw} onChange={setPickRaw} />
+          <div className="grid gap-1.5">
+            <div className="label-caps text-cobalt">原話(活動紀錄可預覽 / 點開)</div>
+            <p className="whitespace-pre-wrap text-sm leading-6 text-ink/70">{userText}</p>
+          </div>
+        </article>
+      )}
+
       {result.new_comment && (
         <article className={cn('grid grid-cols-[auto_1fr] items-start gap-3 rounded-md border border-ink/10 bg-paper p-4 transition', !pickComment && 'opacity-40')}>
           <PickBox checked={pickComment} onChange={setPickComment} />
           <div className="grid gap-1.5">
             <div className="label-caps text-ink/55">AI 摘要(將寫入時間軸)</div>
-            <p className="text-sm leading-6 text-ink/85 whitespace-pre-wrap">{result.new_comment}</p>
+            <AutoTextarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              className="min-h-[3.5rem] w-full rounded-md border border-ink/12 bg-cream/40 px-3 py-2 text-sm leading-6 text-ink/85 focus:border-ink/30 focus:outline-none"
+            />
           </div>
         </article>
       )}
@@ -259,7 +294,11 @@ function ParseResultPanel({
           <PickBox checked={pickNextStep} onChange={setPickNextStep} />
           <div className="grid gap-1.5">
             <div className="label-caps text-brass">建議下一步</div>
-            <p className="text-sm leading-6 text-ink/85 whitespace-pre-wrap">{result.next_step_update}</p>
+            <AutoTextarea
+              value={nextStep}
+              onChange={(e) => setNextStep(e.target.value)}
+              className="min-h-[2.75rem] w-full rounded-md border border-ink/12 bg-cream/40 px-3 py-2 text-sm leading-6 text-ink/85 focus:border-ink/30 focus:outline-none"
+            />
           </div>
         </article>
       )}
