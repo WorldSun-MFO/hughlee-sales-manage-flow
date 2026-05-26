@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  ArrowLeft, Briefcase, Gauge, Home, LayoutGrid, LogOut, Menu, MessageSquareText,
+  ArrowLeft, Briefcase, ClipboardList, Gauge, Home, LayoutGrid, LogOut, Menu, MessageSquareText,
   Route, Settings, Users, X,
 } from 'lucide-react';
 import { cn } from '@/lib/v4/utils';
@@ -20,6 +20,7 @@ const ROLE_LABEL: Record<Role, string> = {
 const nav: Array<{ href: string; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; group?: string }> = [
   { href: '/workspace', label: '總覽', icon: Gauge, group: 'main' },
   { href: '/workspace/today', label: '今日', icon: Home, group: 'main' },
+  { href: '/workspace/tasks', label: '我的任務', icon: ClipboardList, group: 'main' },
   { href: '/workspace/pipeline', label: 'Pipeline', icon: LayoutGrid, group: 'main' },
   { href: '/workspace/clients', label: '客戶', icon: Users, group: 'main' },
   { href: '/workspace/ai', label: 'AI 助手', icon: MessageSquareText, group: 'ai' },

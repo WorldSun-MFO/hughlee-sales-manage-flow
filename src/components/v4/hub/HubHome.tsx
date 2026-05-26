@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowUpRight, Briefcase, Flag, Gauge, Home, LayoutGrid, MessageSquareText, Phone, Route, Settings, Sparkles, TrendingUp, Users } from 'lucide-react';
+import { ArrowUpRight, Briefcase, ClipboardList, Flag, Gauge, Home, LayoutGrid, MessageSquareText, Phone, Route, Settings, Sparkles, TrendingUp, Users } from 'lucide-react';
 import type { Snapshot, StageId } from '@/lib/v4/types';
 import { contactOverdue, fmtMoney, redFlag, urgencyScore } from '@/lib/v4/utils';
 
@@ -40,6 +40,14 @@ export function HubHome({ snapshot }: { snapshot: Snapshot }) {
         primary: `${priorityCount + taskCount}`,
         secondary: `${priorityCount} 個優先客戶 · ${taskCount} 個任務`,
         accent: priorityCount > 0 ? 'border-l-brass' : 'border-l-ink/15',
+      },
+      {
+        href: '/hub/tasks',
+        icon: ClipboardList,
+        label: '我的任務',
+        primary: `${taskCount}`,
+        secondary: '依指派人分組 · 新增 / 勾選 / 指派',
+        accent: taskCount > 0 ? 'border-l-cobalt/50' : 'border-l-ink/15',
       },
       {
         href: '/hub/pipeline',

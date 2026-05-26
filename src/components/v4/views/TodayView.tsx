@@ -1,23 +1,22 @@
 'use client';
 
 // ============================================================
-// 今日 view — v4.2 tab 切換版
+// 今日 view — tab 切換版
 // ============================================================
-// 之前:今日追蹤清單 + 我的任務 上下並列,版面過長
-// 現在:頂部 2 顆 tab 切換,一次只顯示一個區塊
+// 頂部 2 顆 tab 切換,一次只顯示一個區塊:
 //   - 「今日追蹤(N)」  → 優先客戶列表
-//   - 「我的任務(M)」  → TaskRow + TaskComposer
+//   - 「MEDDPICC(N)」   → 補強名單
+// 註:「我的任務」已獨立成側邊欄項目(見 TasksView),不再是這裡的分頁。
 // ============================================================
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, ClipboardList, Phone, Target } from 'lucide-react';
-import type { Snapshot, Task } from '@/lib/v4/types';
+import { ArrowUpRight, Phone, Target } from 'lucide-react';
+import type { Snapshot } from '@/lib/v4/types';
 import { cn, fmtMoney, priorityReason, TIER_STYLES, totalScore, urgencyScore } from '@/lib/v4/utils';
-import { TaskRow, TaskComposer } from '@/components/v4/TaskRow';
 import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 import { MeddpiccTab } from '@/components/v4/views/MeddpiccTab';
 
-type Tab = 'priority' | 'tasks' | 'meddpicc';
+type Tab = 'priority' | 'meddpicc';
 
 export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/workspace' | '/hub' }) {
   const isFixtures = snapshot.source === 'fixtures';
@@ -29,32 +28,10 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/work
 
   const today = new Date().toLocaleDateString('zh-Hant-TW', { month: 'long', day: 'numeric', weekday: 'long' });
 
-  // ★ 樂觀本地 task list:server snapshot 是初始值,使用者新增 / 勾完成 / 改優先級 / 刪除
-  //   都在這個 state 直接改,UI 立刻反應。server 寫入由 TaskRow / TaskComposer 背景跑。
-  const [tasksLocal, setTasksLocal] = useState<Task[]>(snapshot.tasks);
-  useEffect(() => { setTasksLocal(snapshot.tasks); }, [snapshot.tasks]);
-
-  const myTasks = tasksLocal.filter((t) => t.status !== 'done');
-
   // MEDDPICC 補強名單:活躍案件中總分 < 40 (跟紅旗門檻一致) 算「需要補強」
   const meddpiccNeedsWork = snapshot.deals.filter((d) => d.stage !== 'L7' && totalScore(d) < 40).length;
 
-  // 預設選「有東西看」的 tab — 有優先客戶就先看追蹤,沒就跳任務
-  const [tab, setTab] = useState<Tab>(priorityDeals.length > 0 ? 'priority' : 'tasks');
-
-  function handleCreated(task: Task) {
-    setTasksLocal((prev) => [task, ...prev]);
-  }
-  function handlePatch(taskId: string, patch: Partial<Task>) {
-    setTasksLocal((prev) => prev.map((t) => t.id === taskId ? { ...t, ...patch } : t));
-  }
-  function handleDelete(taskId: string) {
-    setTasksLocal((prev) => prev.filter((t) => t.id !== taskId));
-  }
-  // DB 寫入回來:把 tmp id 換成真 id(讓後續 toggle/delete 用真 id)
-  function handleIdResolved(tmpId: string, realId: string) {
-    setTasksLocal((prev) => prev.map((t) => t.id === tmpId ? { ...t, id: realId } : t));
-  }
+  const [tab, setTab] = useState<Tab>('priority');
 
   return (
     <div className="grid gap-8 px-4 py-6 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
@@ -67,13 +44,13 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/work
         </h1>
         <p className="max-w-2xl text-base leading-7 text-ink/65">
           {priorityDeals.length > 0
-            ? `${priorityDeals.length} 個客戶需要關注 · ${myTasks.length} 個未完成任務`
+            ? `${priorityDeals.length} 個客戶需要關注`
             : '所有客戶都健康。今天可以選擇主動轉介或精進案件品質。'}
         </p>
       </header>
 
       {/* Tab 切換 */}
-      <div className="grid grid-cols-3 gap-2 rounded-md border border-ink/10 bg-paper p-1 max-w-2xl">
+      <div className="grid max-w-md grid-cols-2 gap-2 rounded-md border border-ink/10 bg-paper p-1">
         <TabButton
           active={tab === 'priority'}
           onClick={() => setTab('priority')}
@@ -81,14 +58,6 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/work
           label="今日追蹤"
           count={priorityDeals.length}
           tone={priorityDeals.length > 0 ? 'claret' : 'forest'}
-        />
-        <TabButton
-          active={tab === 'tasks'}
-          onClick={() => setTab('tasks')}
-          icon={ClipboardList}
-          label="我的任務"
-          count={myTasks.length}
-          tone="cobalt"
         />
         <TabButton
           active={tab === 'meddpicc'}
@@ -101,18 +70,6 @@ export function TodayView({ snapshot, base }: { snapshot: Snapshot; base: '/work
       </div>
 
       {tab === 'priority' && <PriorityList deals={priorityDeals} snapshot={snapshot} base={base} />}
-      {tab === 'tasks' && (
-        <TasksList
-          tasks={tasksLocal}
-          snapshot={snapshot}
-          base={base}
-          isFixtures={isFixtures}
-          onCreated={handleCreated}
-          onPatch={handlePatch}
-          onDelete={handleDelete}
-          onIdResolved={handleIdResolved}
-        />
-      )}
       {tab === 'meddpicc' && <MeddpiccTab snapshot={snapshot} />}
     </div>
   );
@@ -222,108 +179,6 @@ function PriorityList({
             );
           })}
         </ul>
-      )}
-    </section>
-  );
-}
-
-// 組內排序:未完成在前、完成的沉到最後;同段內再依到期日(近的在前,無期限最後)
-function sortWithinGroup(a: Task, b: Task): number {
-  const ad = a.status === 'done' ? 1 : 0;
-  const bd = b.status === 'done' ? 1 : 0;
-  if (ad !== bd) return ad - bd;
-  const av = a.due_date ?? '9999-12-31';
-  const bv = b.due_date ?? '9999-12-31';
-  if (av !== bv) return av < bv ? -1 : 1;
-  return 0;
-}
-
-const UNASSIGNED = '∅';
-
-function TasksList({
-  tasks, snapshot, base, isFixtures, onCreated, onPatch, onDelete, onIdResolved,
-}: {
-  tasks: Task[];
-  snapshot: Snapshot;
-  base: '/workspace' | '/hub';
-  isFixtures: boolean;
-  onCreated: (task: Task) => void;
-  onPatch: (taskId: string, patch: Partial<Task>) => void;
-  onDelete: (taskId: string) => void;
-  onIdResolved: (tmpId: string, realId: string) => void;
-}) {
-  const openCount = tasks.filter((t) => t.status !== 'done').length;
-
-  // 依指派人分組,讓「誰要做什麼」一目瞭然
-  const byAssignee = new Map<string, Task[]>();
-  for (const t of tasks) {
-    const key = t.assignee_id ?? UNASSIGNED;
-    const arr = byAssignee.get(key) ?? [];
-    arr.push(t);
-    byAssignee.set(key, arr);
-  }
-  const nameOf = (id: string) => {
-    if (id === UNASSIGNED) return '未指派';
-    const p = snapshot.profiles.find((x) => x.id === id);
-    return p?.full_name || p?.email || '未知成員';
-  };
-  const groups = [...byAssignee.entries()]
-    .map(([key, items]) => ({
-      key,
-      name: nameOf(key),
-      items: [...items].sort(sortWithinGroup),
-      open: items.filter((t) => t.status !== 'done').length,
-      done: items.filter((t) => t.status === 'done').length,
-    }))
-    // 有未完成的群組在前;「未指派」永遠排最後;其餘依名字
-    .sort((a, b) => {
-      if ((a.key === UNASSIGNED) !== (b.key === UNASSIGNED)) return a.key === UNASSIGNED ? 1 : -1;
-      if (a.open !== b.open) return b.open - a.open;
-      return a.name.localeCompare(b.name, 'zh-Hant');
-    });
-
-  return (
-    <section className="grid gap-4">
-      <div className="flex items-baseline justify-between">
-        <div className="label-caps text-ink/55">Tasks · {openCount} 未完成 · {tasks.length} 全部</div>
-        <TaskComposer
-          base={base}
-          snapshot={snapshot}
-          isFixtures={isFixtures}
-          onCreated={onCreated}
-          onIdResolved={onIdResolved}
-          onCreateFailed={onDelete}
-        />
-      </div>
-      {tasks.length === 0 ? (
-        <div className="rounded-md border border-ink/10 bg-cream/40 px-6 py-12 text-center text-sm font-semibold text-ink/45">
-          還沒有任務。{!isFixtures && ' 上方點「+ 新增任務」開始'}
-        </div>
-      ) : (
-        <div className="grid gap-5">
-          {groups.map((g) => (
-            <div key={g.key} className="grid gap-2">
-              <div className="flex items-baseline justify-between border-b border-ink/10 pb-1">
-                <div className="font-v4-serif text-sm font-semibold text-ink">{g.name}</div>
-                <div className="font-v4-mono text-[10.5px] text-ink/45">{g.open} 未完成 · {g.done} 完成</div>
-              </div>
-              <ul className="grid gap-2">
-                {g.items.map((t) => (
-                  <li key={t.id}>
-                    <TaskRow
-                      task={t}
-                      snapshot={snapshot}
-                      base={base}
-                      isFixtures={isFixtures}
-                      onLocalPatch={onPatch}
-                      onLocalDelete={onDelete}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
       )}
     </section>
   );
