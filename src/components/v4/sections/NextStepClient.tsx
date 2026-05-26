@@ -1,7 +1,7 @@
 'use client';
 
 // 下一步 + 目標成交日,inline edit + 「拆成任務」按鈕
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Loader2, ListTodo } from 'lucide-react';
 import type { Deal } from '@/lib/v4/types';
@@ -16,10 +16,15 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
   const [splitMsg, setSplitMsg] = useState<string | null>(null);
   const refresh = () => undefined; // fire-and-forget;不再 router.refresh,改靠本地 optimistic state
 
+  // next_step 提到本地 state:讓「畫面顯示的值」與「加到我的任務要拆的值」是同一份。
+  // 否則 inline 編輯(刪行)後 deal.next_step prop 尚未同步,拆任務會用到舊值、把刪掉的行又加回去。
+  const [nextStep, setNextStep] = useState(deal.next_step);
+  useEffect(() => { setNextStep(deal.next_step); }, [deal.next_step]);
+
   async function handleSplit() {
-    if (!deal.next_step || splitBusy) return;
+    if (!nextStep || splitBusy) return;
     if (isFixtures) { setSplitMsg('fixtures 模式無法寫入'); setTimeout(() => setSplitMsg(null), 2500); return; }
-    const titles = splitNextStepIntoTasks(deal.next_step);
+    const titles = splitNextStepIntoTasks(nextStep);
     if (titles.length === 0) { setSplitMsg('下一步沒有可加入的內容'); setTimeout(() => setSplitMsg(null), 2500); return; }
     setSplitBusy(true); setSplitMsg(null);
     try {
@@ -39,7 +44,7 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
     <section className="grid gap-3">
       <div className="flex items-baseline justify-between">
         <div className="label-caps text-ink/55">下一步</div>
-        {deal.next_step && (
+        {nextStep && (
           <button
             type="button"
             onClick={handleSplit}
@@ -54,8 +59,8 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
       </div>
       <div className="rounded-md border border-ink/10 bg-cream/60 p-4">
         <InlineTextarea
-          value={deal.next_step}
-          onSave={async (next) => { await patchDeal(deal.id, { next_step: next }); refresh(); }}
+          value={nextStep}
+          onSave={async (next) => { setNextStep(next); await patchDeal(deal.id, { next_step: next }); refresh(); }}
           isFixtures={isFixtures}
           placeholder="尚未填寫下一步。點擊撰寫..."
           rows={4}
