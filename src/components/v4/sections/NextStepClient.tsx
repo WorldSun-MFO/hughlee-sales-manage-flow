@@ -60,8 +60,8 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
       </div>
       {splitMsg && <div className="font-v4-mono text-[11px] text-ink/65">{splitMsg}</div>}
       <div className="flex items-center gap-2 font-v4-mono text-xs text-ink/55">
-        <Calendar className="h-3 w-3" strokeWidth={2} />
-        目標成交
+        <Calendar className="h-3 w-3 shrink-0" strokeWidth={2} />
+        <span className="shrink-0 whitespace-nowrap">目標成交</span>
         <InlineDate
           value={deal.target_close_date}
           onSave={async (next) => { await patchDeal(deal.id, { target_close_date: next }); refresh(); }}
