@@ -113,7 +113,7 @@ export const getDealComments = cache(async (dealId: string): Promise<Comment[]> 
   if (!supabase) return [];
   const { data } = await supabase
     .from('comments')
-    .select('id, deal_id, author_id, body, is_system, is_raw, created_at')
+    .select('id, deal_id, author_id, body, is_system, is_raw, raw_body, created_at')
     .eq('deal_id', dealId)
     .order('created_at', { ascending: false });
   return (data as Comment[] | null) ?? [];

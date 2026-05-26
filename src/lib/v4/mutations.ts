@@ -49,7 +49,7 @@ export async function markContacted(dealId: string): Promise<void> {
 export async function addComment(
   dealId: string,
   body: string,
-  opts: { isRaw?: boolean } = {},
+  opts: { isRaw?: boolean; rawBody?: string | null } = {},
 ): Promise<void> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -58,11 +58,28 @@ export async function addComment(
     author_id: user?.id ?? null,
     body,
     is_raw: opts.isRaw ?? false,
+    raw_body: opts.rawBody ?? null,   // AI 摘要把對應原話存在同一筆(migration_24)
     is_system: false,
   });
   if (error) throw error;
   // 加 comment 也算 deal 動了一下,連動 last_updated 讓排序新鮮
   await supabase.from('deals').update({ last_updated: new Date().toISOString() }).eq('id', dealId);
+}
+
+// 刪除單筆 comment(活動紀錄)。RLS:comments_delete(rm 或 manager,見 migration_23)。
+// comments 有 audit trigger,刪除會進 audit_log,admin 可還原。
+export async function deleteComment(commentId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('comments').delete().eq('id', commentId);
+  if (error) throw error;
+}
+
+// 編輯單筆 comment 內文(活動紀錄)。RLS:comments_update(rm 或 manager,見 migration_25)。
+// 只動 body,raw_body / is_raw 等不變。
+export async function patchComment(commentId: string, body: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('comments').update({ body }).eq('id', commentId);
+  if (error) throw error;
 }
 
 // ---------- MEDDIC scores ----------

@@ -27,6 +27,7 @@ export interface Comment {
   body: string;
   is_system: boolean;
   is_raw: boolean;
+  raw_body?: string | null;   // AI 摘要對應的原話(migration_24);其他來源為 null
   created_at: string;
 }
 

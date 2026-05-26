@@ -764,6 +764,10 @@ CREATE POLICY comments_select ON public.comments
   FOR SELECT TO authenticated USING (can_access_deal(deal_id));
 CREATE POLICY comments_insert ON public.comments
   FOR INSERT TO authenticated WITH CHECK (can_access_deal(deal_id));
+CREATE POLICY comments_delete ON public.comments        -- migration_23:活動紀錄可刪除(rm 或 manager;刪除進 audit_log 可還原)
+  FOR DELETE TO authenticated USING (can_access_deal(deal_id));
+CREATE POLICY comments_update ON public.comments        -- migration_25:活動紀錄可編輯內文(rm 或 manager;變更進 audit_log)
+  FOR UPDATE TO authenticated USING (can_access_deal(deal_id)) WITH CHECK (can_access_deal(deal_id));
 
 -- deal_attachments
 CREATE POLICY deal_attachments_select ON public.deal_attachments
