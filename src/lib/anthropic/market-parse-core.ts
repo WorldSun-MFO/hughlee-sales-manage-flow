@@ -1,4 +1,4 @@
-import { getAnthropic, AI_MODEL } from './client';
+import { getAnthropic, HAIKU_MODEL } from './client';
 import { MARKET_ANALYST_PROMPT } from './market-prompt';
 import { MarketParseResponseSchema, MARKET_PARSE_JSON_SCHEMA } from './schemas';
 import type { MarketParseResponse } from './schemas';
@@ -32,7 +32,8 @@ export function extractJSON(text: string): string {
 }
 
 /**
- * 市場情報解析核心:文章原文 + 可關聯客戶清單 → Opus 摘要/標籤/建議關聯。
+ * 市場情報解析核心:文章原文 + 可關聯客戶清單 → Haiku 4.5 摘要/標籤/建議關聯。
+ *(結構化抽取任務,用 Haiku 4.5 取代 Opus 以省成本/加速;見 client.ts 模型選擇)
  * API route(人工貼)與 cron(自動抓)共用,確保邏輯單一來源。
  */
 export async function parseMarketIntel(
@@ -63,7 +64,7 @@ ${JSON.stringify(MARKET_PARSE_JSON_SCHEMA, null, 2)}
   const client = getAnthropic();
   try {
     const response = await client.messages.create({
-      model: AI_MODEL,
+      model: HAIKU_MODEL,
       max_tokens: 16000,
       // SDK 0.68 型別還沒納入 'adaptive',cast 繞過(API 已 GA 接受)
       thinking: { type: 'adaptive' } as unknown as { type: 'enabled'; budget_tokens: number },
