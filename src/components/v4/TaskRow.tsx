@@ -13,8 +13,9 @@
 //   - 完成的任務「不」消失:父層只重新排序(沉到最後),由 done 樣式
 //     畫上刪除線。真正移除只在使用者按刪除時發生。
 // ============================================================
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Trash2, Check } from 'lucide-react';
 import type { Task, TaskStatus, TaskPriority, Snapshot } from '@/lib/v4/types';
 import { cn, daysUntil } from '@/lib/v4/utils';
@@ -54,6 +55,8 @@ export function TaskRow({
   onLocalPatch?: (taskId: string, patch: Partial<Task>) => void;
   onLocalDelete?: (taskId: string) => void;
 }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   // tmp 任務(id 開頭 'tmp-')尚未從 DB 拿到真 id,不能對它做 patch/delete
   // 否則 patchTask(tmpId) 在 DB 完全找不到 row。等 swap 完才解鎖。
   const pending = task.id.startsWith('tmp-');
@@ -117,11 +120,14 @@ export function TaskRow({
     setLocalAssignee(next);
     onLocalPatch?.(task.id, { assignee_id: next });
     setErr(null);
-    patchTask(task.id, { assignee_id: next }).catch((e) => {
-      setLocalAssignee(prev);
-      onLocalPatch?.(task.id, { assignee_id: prev });
-      setErr((e as Error).message);
-    });
+    patchTask(task.id, { assignee_id: next })
+      // 改派會影響別頁分組(我的任務),主動刷新使快取失效、跨頁同步(Realtime 在 preview 未推播)
+      .then(() => startTransition(() => router.refresh()))
+      .catch((e) => {
+        setLocalAssignee(prev);
+        onLocalPatch?.(task.id, { assignee_id: prev });
+        setErr((e as Error).message);
+      });
   }
 
   function changeDue(next: string | null) {

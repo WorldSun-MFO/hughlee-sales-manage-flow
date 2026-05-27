@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Search } from 'lucide-react';
-import type { Snapshot, StageId, Tier } from '@/lib/v4/types';
+import type { Profile, Snapshot, StageId, Tier } from '@/lib/v4/types';
 import { STAGES } from '@/lib/v4/constants';
 import { daysSince, fmtMoney, totalScore, TIER_STYLES } from '@/lib/v4/utils';
 import { AddDealButton } from '@/components/v4/AddDealButton';
@@ -13,7 +13,7 @@ type SortKey = 'aum_desc' | 'aum_asc' | 'updated_desc' | 'updated_asc' | 'score_
 
 const TIERS_ORDER: Tier[] = ['SSS', 'S', 'A', 'B', 'C'];
 
-export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: '/workspace' | '/hub' }) {
+export function ClientsListView({ snapshot, base, profile }: { snapshot: Snapshot; base: '/workspace' | '/hub'; profile: Profile | null }) {
   const isFixtures = snapshot.source === 'fixtures';
   const [q, setQ] = useState('');
   const [stage, setStage] = useState<StageId | ''>('');
@@ -68,7 +68,7 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
             </h1>
           </div>
           <div className="pt-2 shrink-0">
-            <AddDealButton base={base} isFixtures={isFixtures} />
+            <AddDealButton base={base} isFixtures={isFixtures} profile={profile} profiles={snapshot.profiles} />
           </div>
         </div>
         <p className="max-w-2xl text-sm leading-6 text-ink/65 sm:text-base sm:leading-7">
@@ -131,20 +131,34 @@ export function ClientsListView({ snapshot, base }: { snapshot: Snapshot; base: 
           沒有符合條件的客戶{hasFilter && '清除篩選看全部 ↑'}
         </div>
       ) : (
-        TIERS_ORDER.map((tier) => {
-          const deals = sortDeals(filtered.filter((d) => d.tier === tier));
+        // TIERS_ORDER 之後接一個 'NONE' 組:沒排 Tier 的案件排在最後,標題「無 TIER」
+        ([...TIERS_ORDER, 'NONE'] as const).map((tier) => {
+          const deals = sortDeals(
+            tier === 'NONE'
+              ? filtered.filter((d) => !d.tier)        // 未分級
+              : filtered.filter((d) => d.tier === tier),
+          );
           if (deals.length === 0) return null;
-          const tierAum = deals.reduce((s, d) => s + Number(d.aum_usd), 0);
-          const tierConfig = snapshot.tierConfig.find((t) => t.key === tier);
+          const groupAum = deals.reduce((s, d) => s + Number(d.aum_usd), 0);
+          const tierConfig = tier === 'NONE' ? null : snapshot.tierConfig.find((t) => t.key === tier);
           return (
             <section key={tier} className="grid gap-4">
               <div className="flex flex-col gap-1 border-b border-ink/10 pb-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <span className={`rounded-sm px-2 py-1 font-v4-mono text-xs font-bold ${TIER_STYLES[tier]}`}>{tier}</span>
-                  <span className="font-v4-serif text-lg font-medium text-ink sm:text-xl">{tierConfig?.name ?? tier}</span>
-                  <span className="font-v4-mono text-xs text-ink/45 numeric">{deals.length} 位 · {fmtMoney(tierAum)}</span>
+                  {tier === 'NONE' ? (
+                    <>
+                      <span className="rounded-sm border border-ink/20 px-2 py-1 font-v4-mono text-xs font-bold text-ink/55">無 TIER</span>
+                      <span className="font-v4-serif text-lg font-medium text-ink sm:text-xl">未分級</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`rounded-sm px-2 py-1 font-v4-mono text-xs font-bold ${TIER_STYLES[tier]}`}>{tier}</span>
+                      <span className="font-v4-serif text-lg font-medium text-ink sm:text-xl">{tierConfig?.name ?? tier}</span>
+                    </>
+                  )}
+                  <span className="font-v4-mono text-xs text-ink/45 numeric">{deals.length} 位 · {fmtMoney(groupAum)}</span>
                 </div>
-                <div className="font-v4-mono text-[11px] text-ink/45">建議聯繫週期 {tierConfig?.contact_days ?? '—'} 天</div>
+                <div className="font-v4-mono text-[11px] text-ink/45">{tier === 'NONE' ? '尚未排 Tier · 進客戶頁可設定' : `建議聯繫週期 ${tierConfig?.contact_days ?? '—'} 天`}</div>
               </div>
               <ul className="grid gap-2">
                 {deals.map((d) => (

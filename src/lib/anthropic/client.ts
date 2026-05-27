@@ -31,6 +31,15 @@ export function getAnthropic(): Anthropic {
   return _client;
 }
 
-// Opus 4.7:最強的推理 + 中文 + 結構化輸出。適合 MFO 銷售策略這種需要深度判斷的場景。
-// 搭配 adaptive thinking 讓模型自行決定推理深度,effort 預設 'high'。
+// ============================================================
+// 模型選擇 — 依功能挑模型(成本/速度 vs 推理深度)
+// ============================================================
+// 主力(需深度判斷):parse-interaction / generate-plan / market-synthesis /
+//   client-talking-points → Opus 4.7。
+// 輕量(結構化抽取,不需深度推理):market-parse → Haiku 4.5(快又便宜)。
+//
+// Opus 4.7:最強的推理 + 中文 + 結構化輸出。搭配 adaptive thinking 自行決定推理深度。
 export const AI_MODEL = 'claude-opus-4-7';
+
+// Haiku 4.5:延遲低、成本低,適合「把原文濃縮成 JSON」這類結構化抽取任務。
+export const HAIKU_MODEL = 'claude-haiku-4-5-20251001';

@@ -20,17 +20,24 @@ import { Plus, Loader2, Check } from 'lucide-react';
 import { createDeal } from '@/lib/v4/mutations';
 import { Drawer } from '@/components/v4/Drawer';
 import { cn } from '@/lib/v4/utils';
-import type { Tier } from '@/lib/v4/types';
+import type { Profile, Tier } from '@/lib/v4/types';
 
 const TIER_OPTIONS: Array<{ value: Tier; label: string }> = [
   { value: 'SSS', label: 'SSS · 旗艦 Flagship' },
-  { value: 'S',   label: 'S · 高階 Premier' },
-  { value: 'A',   label: 'A · 中階 Advanced' },
-  { value: 'B',   label: 'B · 初階 Entry' },
-  { value: 'C',   label: 'C · 基礎 Foundation' },
+  { value: 'S', label: 'S · 高階 Premier' },
+  { value: 'A', label: 'A · 中階 Advanced' },
+  { value: 'B', label: 'B · 初階 Entry' },
+  { value: 'C', label: 'C · 基礎 Foundation' },
 ];
 
-export function AddDealButton({ base, isFixtures }: { base: '/workspace' | '/hub'; isFixtures: boolean }) {
+export function AddDealButton({
+  base, isFixtures, profile, profiles,
+}: {
+  base: '/workspace' | '/hub';
+  isFixtures: boolean;
+  profile: Profile | null;
+  profiles: Profile[];
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -40,11 +47,21 @@ export function AddDealButton({ base, isFixtures }: { base: '/workspace' | '/hub
   const [product, setProduct] = useState('');
   const [nextStep, setNextStep] = useState('');
   const [targetDate, setTargetDate] = useState('');
+  const [rmId, setRmId] = useState(profile?.id ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 可指派的 RM 名單(對齊 deals_insert RLS:admin=全部、team_lead=自己團隊、rm=只能自己)
+  const role = profile?.role;
+  const assignable = !profile ? []
+    : role === 'admin' ? profiles
+      : role === 'team_lead' ? profiles.filter((p) => p.id === profile.id || (!!profile.team_id && p.team_id === profile.team_id))
+        : [profile];
+  const canPickRm = (role === 'admin' || role === 'team_lead') && assignable.length > 1;
+
   function reset() {
-    setName(''); setAum(''); setTier(''); setProduct(''); setNextStep(''); setTargetDate(''); setErr(null);
+    setName(''); setAum(''); setTier(''); setProduct(''); setNextStep(''); setTargetDate('');
+    setRmId(profile?.id ?? ''); setErr(null);
   }
 
   async function submit() {
@@ -61,6 +78,7 @@ export function AddDealButton({ base, isFixtures }: { base: '/workspace' | '/hub
         product: product.trim() || null,
         next_step: nextStep.trim() || null,
         target_close_date: targetDate || null,
+        rm_id: rmId || undefined,   // 未選/RM 角色 → undefined → createDeal fallback 當前使用者
       });
       reset();
       setOpen(false);
@@ -124,6 +142,22 @@ export function AddDealButton({ base, isFixtures }: { base: '/workspace' | '/hub
             />
           </Field>
 
+          {canPickRm && (
+            <Field label="指派 RM" hint={role === 'admin' ? '管理員可指派給任何成員' : '可指派給你團隊內的成員'}>
+              <select
+                value={rmId}
+                onChange={(e) => setRmId(e.target.value)}
+                className="w-full rounded-md border border-ink/15 bg-cream/40 px-3 py-2 text-sm text-ink focus:border-ink/40 focus:outline-none"
+              >
+                {assignable.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {(p.full_name || p.email) + (p.id === profile?.id ? '' : '')}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
           <Field label="Tier" hint="可空,之後再依 AUM 校準">
             <select
               value={tier}
@@ -170,7 +204,7 @@ export function AddDealButton({ base, isFixtures }: { base: '/workspace' | '/hub
             <div><span className="label-caps text-ink/45">自動帶入</span></div>
             <ul className="grid gap-0.5 font-v4-mono text-[11px]">
               <li>· stage = L1(線索)</li>
-              <li>· RM = 你自己</li>
+              {!canPickRm && <li>· RM = 你自己</li>}
               <li>· 首次接觸 = 今天</li>
               <li>· MEDDIC 8 個分數 = 全部 0(進詳情頁再給分)</li>
             </ul>

@@ -30,8 +30,8 @@ export async function middleware(request: NextRequest) {
   // 正式環境沒有 NEXT_PUBLIC_DEMO_MODE → 跳過整段,走下方原認證邏輯。
   if (IS_DEMO) {
     const path = request.nextUrl.pathname;
-    // 次要模組(market / mindmap)會打 Supabase,demo 一律導回首頁
-    if (path.startsWith('/market') || path.startsWith('/mindmap')) {
+    // 次要模組(market)會打 Supabase,demo 一律導回首頁
+    if (path.startsWith('/market')) {
       return NextResponse.redirect(new URL('/', request.url));
     }
     const password = process.env.DEMO_PASSWORD ?? '';

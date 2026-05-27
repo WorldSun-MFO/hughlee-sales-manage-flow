@@ -14,7 +14,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { getDealCore, getTierConfig } from '@/lib/v4/data';
+import { getDealCore, getTierConfig, getProfilesAndTeams, getCurrentProfile } from '@/lib/v4/data';
 import { IS_DEMO } from '@/lib/demo';
 import { ClientDetailShell } from '@/components/v4/sections/Shell';
 import { HeaderClient } from '@/components/v4/sections/HeaderClient';
@@ -41,9 +41,11 @@ export default async function WorkspaceClientDetailPage(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const [deal, tierConfig] = await Promise.all([
+  const [deal, tierConfig, profilesTeams, profile] = await Promise.all([
     getDealCore(id),
     getTierConfig(),
+    getProfilesAndTeams(),
+    getCurrentProfile(),
   ]);
   const isFixtures = IS_DEMO || !deal;
 
@@ -62,7 +64,7 @@ export default async function WorkspaceClientDetailPage(
 
   return (
     <ClientDetailShell deal={deal} backHref="/workspace/clients" isFixtures={isFixtures}>
-      <HeaderClient deal={deal} isFixtures={isFixtures} />
+      <HeaderClient deal={deal} isFixtures={isFixtures} profile={profile} profiles={profilesTeams.profiles} />
       <AlertsRow deal={deal} tierConfig={tierConfig} />
       <StatsRow deal={deal} />
       <StagePromptSection stage={deal.stage} />

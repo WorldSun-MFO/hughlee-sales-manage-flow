@@ -20,7 +20,8 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
-const ENABLED = false; // ← 改 true 即開啟
+const ENABLED = true; // 多人協作已啟用:DB 一變即自動 router.refresh 同步畫面
+                      //(若覺得「自己寫入也被刷」太重,可改成只刷別人的變動)
 
 const DEFAULT_TABLES = [
   'deals',

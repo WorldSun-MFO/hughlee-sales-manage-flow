@@ -10,7 +10,7 @@ export default async function HubClientsPage() {
     <>
       <HubTopBar pageLabel="客戶名冊" source={snap.source} profile={profile} />
       <div className="mx-auto max-w-[1240px]">
-        <ClientsListView snapshot={snap} base="/hub" />
+        <ClientsListView snapshot={snap} base="/hub" profile={profile} />
       </div>
     </>
   );

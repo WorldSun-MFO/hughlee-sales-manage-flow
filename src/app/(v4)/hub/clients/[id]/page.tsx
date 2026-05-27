@@ -2,7 +2,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { getCurrentProfile, getDealCore, getTierConfig } from '@/lib/v4/data';
+import { getCurrentProfile, getDealCore, getTierConfig, getProfilesAndTeams } from '@/lib/v4/data';
 import { IS_DEMO } from '@/lib/demo';
 import { HubTopBar } from '@/components/v4/hub/HubTopBar';
 import { ClientDetailShell } from '@/components/v4/sections/Shell';
@@ -30,10 +30,11 @@ export default async function HubClientDetailPage(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const [deal, tierConfig, profile] = await Promise.all([
+  const [deal, tierConfig, profile, profilesTeams] = await Promise.all([
     getDealCore(id),
     getTierConfig(),
     getCurrentProfile(),
+    getProfilesAndTeams(),
   ]);
   const isFixtures = IS_DEMO || !deal;
 
@@ -58,7 +59,7 @@ export default async function HubClientDetailPage(
       <HubTopBar pageLabel={deal.name.replace(/^【範例】/, '')} source={isFixtures ? 'fixtures' : 'supabase'} profile={profile} />
       <div className="mx-auto max-w-[1240px]">
         <ClientDetailShell deal={deal} backHref="/hub/clients" isFixtures={isFixtures}>
-          <HeaderClient deal={deal} isFixtures={isFixtures} />
+          <HeaderClient deal={deal} isFixtures={isFixtures} profile={profile} profiles={profilesTeams.profiles} />
           <AlertsRow deal={deal} tierConfig={tierConfig} />
           <StatsRow deal={deal} />
           <StagePromptSection stage={deal.stage} />
