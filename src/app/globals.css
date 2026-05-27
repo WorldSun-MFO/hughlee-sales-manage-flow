@@ -31,7 +31,7 @@
 /* 在有 v4-root 出現的頁面把根字體調大,讓 Tailwind 的 text-xs/sm/base/lg
  * 等 rem 值全體等比放大(16 → 19,約 +18.75%)。
  * :has() 已在現代瀏覽器(Chrome 105+/Safari 15.4+/Firefox 121+)支援。
- * 非 v4 路由(/legacy、/market、/mindmap...)沒有 .v4-root → html 仍是預設 16px。 */
+ * 非 v4 路由(/legacy、/market...)沒有 .v4-root → html 仍是預設 16px。 */
 html:has(.v4-root) {
   font-size: 19px;
 }
