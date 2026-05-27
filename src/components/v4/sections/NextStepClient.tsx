@@ -34,7 +34,10 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
       for (const title of titles) {
         await createTask({ deal_id: deal.id, title, assignee_id: user?.id ?? null, priority: 'normal', status: 'todo' });
       }
-      setSplitMsg(`✓ 已加入我的任務(${titles.length} 件)`); refresh();
+      // 建立後主動刷新:同頁下方「任務」區 + 側邊欄「我的任務」立刻反映
+      //(跨元件同步本來靠 Realtime,但 preview 未推播,故這裡明確 refresh)
+      setSplitMsg(`✓ 已加入我的任務(${titles.length} 件)`);
+      startTransition(() => router.refresh());
       setTimeout(() => setSplitMsg(null), 3000);
     } catch (err) { setSplitMsg(`失敗:${(err as Error).message}`); }
     finally { setSplitBusy(false); }
