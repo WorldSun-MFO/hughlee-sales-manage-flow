@@ -153,7 +153,7 @@ export function MarketView({
           </div>
         ) : (
           <ul className="grid gap-3">
-            {filtered.map((i) => <IntelCard key={i.id} intel={i} />)}
+            {filtered.map((i) => <IntelCard key={i.id} intel={i} base={base} />)}
           </ul>
         )}
       </section>
@@ -193,12 +193,12 @@ function ActionCard({
   );
 }
 
-function IntelCard({ intel }: { intel: MarketIntelRow }) {
+function IntelCard({ intel, base }: { intel: MarketIntelRow; base: '/workspace' | '/hub' }) {
   const OriginIcon = intel.source_origin === 'auto' ? Sparkles : Hand;
   return (
     <li>
       <Link
-        href={`/market/${intel.id}` as never}
+        href={`${base}/market/${intel.id}` as never}
         className="group flex flex-col gap-3 rounded-md border border-ink/10 bg-paper p-4 transition hover:border-ink/25 hover:shadow-panel sm:grid sm:grid-cols-[100px_1fr_auto] sm:items-start sm:gap-4 sm:p-5"
       >
         <div className="flex flex-row flex-wrap items-center gap-2 sm:grid sm:gap-1.5">
