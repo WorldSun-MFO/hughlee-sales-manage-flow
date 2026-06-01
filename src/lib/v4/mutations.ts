@@ -153,6 +153,22 @@ export interface TaskInsert {
   status?: 'todo' | 'doing' | 'done';
 }
 
+// 任務變動後,非阻塞地請後端把它同步到 Google 行事曆。
+// fire-and-forget:吞掉所有錯誤 —— 同步是附屬功能,絕不能擋住任務操作本身。
+// (後端在 GCP / env 未設定時會安靜跳過;邏輯全在 /api/calendar/sync-task。)
+function syncCalendar(
+  payload:
+    | { op: 'upsert'; taskId: string }
+    | { op: 'delete'; googleEventId: string | null; googleEventOwner: string | null },
+): void {
+  void fetch('/api/calendar/sync-task', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true, // 即使使用者馬上關頁也盡量把請求送出去
+  }).catch(() => {});
+}
+
 // 改回傳真實 task id,讓 TaskComposer 把 tmp id 換成 DB 真 id
 // 後續點完成 / 改優先級 / 刪除才打得中資料
 export async function createTask(input: TaskInsert): Promise<string> {
@@ -167,7 +183,9 @@ export async function createTask(input: TaskInsert): Promise<string> {
     status: input.status ?? 'todo',
   }).select('id').single();
   if (error) throw error;
-  return (data as { id: string }).id;
+  const id = (data as { id: string }).id;
+  syncCalendar({ op: 'upsert', taskId: id }); // 有 due_date 才會真的建事件,後端自己判斷
+  return id;
 }
 
 export async function patchTask(
@@ -180,12 +198,24 @@ export async function patchTask(
   else if (patch.status) next.completed_at = null;
   const { error } = await supabase.from('tasks').update(next).eq('id', taskId);
   if (error) throw error;
+  // 後端讀任務最新狀態自行決定:建立 / 修改 / (done 或無 due_date 則)移除事件
+  syncCalendar({ op: 'upsert', taskId });
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
   const supabase = createClient();
+  // 刪 row 前先抓 Google 事件資訊 —— row 沒了就讀不到,後端也無從反查
+  const { data: row } = await supabase
+    .from('tasks')
+    .select('google_event_id, google_event_owner')
+    .eq('id', taskId)
+    .maybeSingle();
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
   if (error) throw error;
+  const g = row as { google_event_id: string | null; google_event_owner: string | null } | null;
+  if (g?.google_event_id) {
+    syncCalendar({ op: 'delete', googleEventId: g.google_event_id, googleEventOwner: g.google_event_owner });
+  }
 }
 
 // ---------- 拆 next_step 成多個任務(沿用 ws_crm 既有邏輯)----------

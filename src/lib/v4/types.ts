@@ -135,6 +135,11 @@ export interface Task {
   priority: TaskPriority;
   created_at: string;
   completed_at: string | null;
+  // Google 行事曆同步(migration 26)。舊 row / 未同步者為 null。
+  google_event_id?: string | null;
+  google_event_owner?: string | null;
+  google_synced_at?: string | null;
+  google_sync_error?: string | null;
 }
 
 export interface Team {

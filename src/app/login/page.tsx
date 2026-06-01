@@ -22,6 +22,10 @@ export default function LoginPage() {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        // 要求 Google 行事曆「事件」讀寫權限 — 任務指派時把任務同步成行事曆事件。
+        // 需搭配:GCP 啟用 Calendar API + OAuth 同意畫面加同一個 scope。
+        scopes: 'https://www.googleapis.com/auth/calendar.events',
+        // access_type=offline + prompt=consent 確保拿得到 refresh_token(server 端長期同步要用)
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });
