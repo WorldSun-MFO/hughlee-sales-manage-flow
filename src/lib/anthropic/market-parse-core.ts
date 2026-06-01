@@ -66,8 +66,9 @@ ${JSON.stringify(MARKET_PARSE_JSON_SCHEMA, null, 2)}
     const response = await client.messages.create({
       model: HAIKU_MODEL,
       max_tokens: 16000,
-      // SDK 0.68 型別還沒納入 'adaptive',cast 繞過(API 已 GA 接受)
-      thinking: { type: 'adaptive' } as unknown as { type: 'enabled'; budget_tokens: number },
+      // 注意:Haiku 4.5 不支援 'adaptive' thinking(那是 Opus 4.7 專屬),
+      // 強行傳會被 API 回 400。而本任務是萃取/分類,本來就不需要 extended
+      // thinking → 整段移除,順便讓 Haiku 跑更快。
       system: [
         {
           type: 'text',
