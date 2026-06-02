@@ -127,8 +127,17 @@ export async function GET(request: Request) {
     // 非致命:存失敗只記 log,絕不擋登入。
     try {
       const session = data.session;
+      // 診斷用:確認 Supabase 這次到底有沒有把 Google 的 token 回傳給我們。
+      // 不印 token 本身(機密),只印「有沒有」。排查完可移除。
+      console.log('[auth/callback] token 診斷:', {
+        hasSession: !!session,
+        userId: session?.user?.id ?? null,
+        hasProviderToken: !!session?.provider_token,
+        hasProviderRefreshToken: !!session?.provider_refresh_token,
+      });
       if (session?.provider_refresh_token && session.user?.id) {
         await storeRefreshToken(session.user.id, session.provider_refresh_token);
+        console.log('[auth/callback] refresh token 已存入 google_credentials');
       }
     } catch (e) {
       console.error('[auth/callback] 存 Google refresh token 失敗(不影響登入):', e);

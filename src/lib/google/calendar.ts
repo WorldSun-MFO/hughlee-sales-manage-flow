@@ -88,7 +88,10 @@ function eventBody(input: EventInput) {
     start: { date: input.dueDate },
     end: { date: addDays(input.dueDate, 1) },
     attendees: input.attendeeEmail ? [{ email: input.attendeeEmail }] : undefined,
-    reminders: { useDefault: true },
+    // 不指定 reminders:Google 會自動套用該行事曆的「預設提醒」(等同
+    // useDefault:true)。刻意不送 useDefault —— PATCH 既有事件時,若該事件
+    // 已帶 overrides,送 useDefault:true 會與之並存而觸發 400
+    // (cannotUseDefaultRemindersAndSpecifyOverride)。
   };
 }
 
