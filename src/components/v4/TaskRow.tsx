@@ -13,10 +13,10 @@
 //   - 完成的任務「不」消失:父層只重新排序(沉到最後),由 done 樣式
 //     畫上刪除線。真正移除只在使用者按刪除時發生。
 // ============================================================
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Trash2, Check } from 'lucide-react';
+import { Trash2, Check, Users } from 'lucide-react';
 import type { Task, TaskStatus, TaskPriority, Snapshot } from '@/lib/v4/types';
 import { cn, daysUntil } from '@/lib/v4/utils';
 import { patchTask, deleteTask, createTask } from '@/lib/v4/mutations';
@@ -43,6 +43,79 @@ const PRIORITY_PILL: Record<TaskPriority, string> = {
   low: 'border-ink/15 text-ink/45 bg-paper',
 };
 
+const CONTROL_BASE = 'rounded-sm border px-1.5 py-0.5 font-v4-mono text-[10px] outline-none transition';
+
+// 協作者多選 picker:按鈕顯示「協作 N」,點開是成員勾選清單。
+// exclude:主責人 id —— 不在協作者清單中重複出現。
+function ParticipantPicker({
+  profiles, value, exclude, disabled, onChange,
+}: {
+  profiles: { id: string; full_name?: string | null; email: string }[];
+  value: string[];
+  exclude?: string | null;
+  disabled?: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const selectable = profiles.filter((p) => p.id !== exclude);
+  const count = value.filter((id) => id !== exclude).length;
+
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        title="協作者(一起討論/開會,會收到行事曆邀請)"
+        className={cn(
+          CONTROL_BASE, 'inline-flex items-center gap-1 border-ink/15 bg-paper',
+          count > 0 ? 'text-ink/80' : 'text-ink/65',
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:border-ink/40',
+        )}
+      >
+        <Users className="h-3 w-3" strokeWidth={2} />
+        {count > 0 ? `協作 ${count}` : '協作者'}
+      </button>
+      {open && (
+        <div className="absolute left-0 z-30 mt-1 max-h-56 w-52 overflow-auto rounded-md border border-ink/15 bg-paper p-1 shadow-lg">
+          {selectable.length === 0 && (
+            <div className="px-2 py-1.5 text-[11px] text-ink/45">沒有其他成員可加入</div>
+          )}
+          {selectable.map((p) => (
+            <label
+              key={p.id}
+              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[11px] text-ink/75 hover:bg-ink/5"
+            >
+              <input
+                type="checkbox"
+                checked={value.includes(p.id)}
+                onChange={() => toggle(p.id)}
+                className="accent-cobalt"
+              />
+              <span className="truncate">{p.full_name || p.email}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TaskRow({
   task, snapshot, base, isFixtures, onLocalPatch, onLocalDelete,
 }: {
@@ -64,6 +137,7 @@ export function TaskRow({
   const [localStatus, setLocalStatus] = useState<TaskStatus>(task.status);
   const [localPriority, setLocalPriority] = useState<TaskPriority>(task.priority);
   const [localAssignee, setLocalAssignee] = useState<string | null>(task.assignee_id);
+  const [localParticipants, setLocalParticipants] = useState<string[]>(task.participant_ids ?? []);
   const [localDue, setLocalDue] = useState<string | null>(task.due_date);
   const [removed, setRemoved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -71,6 +145,7 @@ export function TaskRow({
   useEffect(() => { setLocalStatus(task.status); }, [task.status]);
   useEffect(() => { setLocalPriority(task.priority); }, [task.priority]);
   useEffect(() => { setLocalAssignee(task.assignee_id); }, [task.assignee_id]);
+  useEffect(() => { setLocalParticipants(task.participant_ids ?? []); }, [task.participant_ids]);
   useEffect(() => { setLocalDue(task.due_date); }, [task.due_date]);
 
   if (removed) return null;
@@ -130,6 +205,20 @@ export function TaskRow({
       });
   }
 
+  function changeParticipants(next: string[]) {
+    if (!guard()) return;
+    const prev = localParticipants;
+    setLocalParticipants(next);
+    onLocalPatch?.(task.id, { participant_ids: next });
+    setErr(null);
+    patchTask(task.id, { participant_ids: next })
+      .catch((e) => {
+        setLocalParticipants(prev);
+        onLocalPatch?.(task.id, { participant_ids: prev });
+        setErr((e as Error).message);
+      });
+  }
+
   function changeDue(next: string | null) {
     if (!guard()) return;
     const prev = localDue;
@@ -156,7 +245,7 @@ export function TaskRow({
       .catch((e) => { setRemoved(false); setErr((e as Error).message); });
   }
 
-  const controlBase = 'rounded-sm border px-1.5 py-0.5 font-v4-mono text-[10px] outline-none transition';
+  const controlBase = CONTROL_BASE;
 
   return (
     <div className={cn(
@@ -215,6 +304,15 @@ export function TaskRow({
             ))}
           </select>
 
+          {/* 協作者(多人;主責人 + 協作者都會成為行事曆與會者) */}
+          <ParticipantPicker
+            profiles={snapshot.profiles}
+            value={localParticipants}
+            exclude={localAssignee}
+            disabled={locked}
+            onChange={changeParticipants}
+          />
+
           {/* 到期日 */}
           <input
             type="date"
@@ -227,6 +325,7 @@ export function TaskRow({
               locked ? 'cursor-not-allowed' : 'cursor-pointer hover:border-ink/40',
             )}
           />
+
           {localDue && !done && (
             <span className={cn('font-v4-mono text-[10px] numeric', dueTone)}>{dueLabel}</span>
           )}
@@ -296,6 +395,7 @@ export function TaskComposer({
   const [title, setTitle] = useState('');
   const [dealId, setDealId] = useState(defaultDealId ?? '');
   const [assigneeId, setAssigneeId] = useState('');
+  const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [err, setErr] = useState<string | null>(null);
@@ -310,6 +410,8 @@ export function TaskComposer({
     const priVal = priority;
     const linkedDeal = dealId || null;
     const assignee = assigneeId || null;
+    // 主責人不重複列入協作者
+    const participants = participantIds.filter((id) => id !== assignee);
 
     // 樂觀:立刻給父層一筆 tmp 任務 + 收起 composer
     const tmpTask: Task = {
@@ -318,6 +420,7 @@ export function TaskComposer({
       title: titleVal,
       description: '',
       assignee_id: assignee,
+      participant_ids: participants,
       due_date: dueVal,
       status: 'todo',
       priority: priVal,
@@ -325,7 +428,7 @@ export function TaskComposer({
       completed_at: null,
     };
     onCreated?.(tmpTask);
-    setTitle(''); setAssigneeId(''); setDueDate(''); setPriority('normal'); setExpanded(false);
+    setTitle(''); setAssigneeId(''); setParticipantIds([]); setDueDate(''); setPriority('normal'); setExpanded(false);
     setErr(null);
 
     // DB 寫入背景跑;成功就把 tmp id 換成真 id(後續 toggle/delete 才打得到 row),
@@ -334,6 +437,7 @@ export function TaskComposer({
       deal_id: linkedDeal,
       title: titleVal,
       assignee_id: assignee,
+      participant_ids: participants,
       due_date: dueVal,
       priority: priVal,
       status: 'todo',
@@ -398,6 +502,12 @@ export function TaskComposer({
             <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
           ))}
         </select>
+        <ParticipantPicker
+          profiles={snapshot.profiles}
+          value={participantIds}
+          exclude={assigneeId || null}
+          onChange={setParticipantIds}
+        />
         <input
           type="date"
           value={dueDate}

@@ -77,7 +77,7 @@ export interface EventInput {
   title: string;
   description?: string;
   dueDate: string; // YYYY-MM-DD
-  attendeeEmail?: string | null;
+  attendeeEmails?: string[]; // 主責人 + 協作者(已過濾為 @wsgfo.com、去重)
 }
 
 function eventBody(input: EventInput) {
@@ -87,7 +87,7 @@ function eventBody(input: EventInput) {
     description: input.description || undefined,
     start: { date: input.dueDate },
     end: { date: addDays(input.dueDate, 1) },
-    attendees: input.attendeeEmail ? [{ email: input.attendeeEmail }] : undefined,
+    attendees: input.attendeeEmails?.length ? input.attendeeEmails.map((email) => ({ email })) : undefined,
     // 不指定 reminders:Google 會自動套用該行事曆的「預設提醒」(等同
     // useDefault:true)。刻意不送 useDefault —— PATCH 既有事件時,若該事件
     // 已帶 overrides,送 useDefault:true 會與之並存而觸發 400
@@ -151,7 +151,7 @@ export async function upsertTaskEvent(operatorId: string, taskId: string): Promi
   const svc = createServiceClient();
   const { data: taskRow } = await svc
     .from('tasks')
-    .select('id, title, description, due_date, status, assignee_id, google_event_id, google_event_owner')
+    .select('id, title, description, due_date, status, assignee_id, participant_ids, google_event_id, google_event_owner')
     .eq('id', taskId)
     .maybeSingle();
   if (!taskRow) return { ok: false, skipped: 'task not found' };
@@ -163,6 +163,7 @@ export async function upsertTaskEvent(operatorId: string, taskId: string): Promi
     due_date: string | null;
     status: string;
     assignee_id: string | null;
+    participant_ids: string[] | null;
     google_event_id: string | null;
     google_event_owner: string | null;
   };
@@ -182,23 +183,30 @@ export async function upsertTaskEvent(operatorId: string, taskId: string): Promi
     return { ok: true, action: 'removed' };
   }
 
-  // 指派對象 email(只有 @wsgfo.com 才設為與會者)
-  let attendeeEmail: string | null = null;
-  if (t.assignee_id) {
-    const { data: p } = await svc
+  // 與會者 = 主責人 + 協作者。只有 @wsgfo.com 內部帳號才設為與會者;去重。
+  const memberIds = Array.from(
+    new Set([t.assignee_id, ...(t.participant_ids ?? [])].filter((x): x is string => !!x)),
+  );
+  let attendeeEmails: string[] = [];
+  if (memberIds.length) {
+    const { data: ps } = await svc
       .from('profiles')
       .select('email')
-      .eq('id', t.assignee_id)
-      .maybeSingle();
-    const email = (p as { email?: string } | null)?.email;
-    if (email && email.toLowerCase().endsWith('@wsgfo.com')) attendeeEmail = email;
+      .in('id', memberIds);
+    attendeeEmails = Array.from(
+      new Set(
+        ((ps as { email?: string }[] | null) ?? [])
+          .map((p) => p.email?.toLowerCase())
+          .filter((e): e is string => !!e && e.endsWith('@wsgfo.com')),
+      ),
+    );
   }
 
   const input: EventInput = {
     title: t.title,
     description: t.description ?? '',
     dueDate: t.due_date,
-    attendeeEmail,
+    attendeeEmails,
   };
 
   // 既有事件 → 用「建立者」token PATCH(事件綁在他行事曆);無 → 用 operator CREATE

@@ -130,6 +130,9 @@ export interface Task {
   title: string;
   description: string;
   assignee_id: string | null;
+  // 協作者(migration 27)。主責人之外、一起討論/開會的人;行事曆同步時
+  // 與主責人一起設為事件與會者。DB 一律回陣列;型別選填以相容既有 fixtures。
+  participant_ids?: string[];
   due_date: string | null;
   status: TaskStatus;
   priority: TaskPriority;

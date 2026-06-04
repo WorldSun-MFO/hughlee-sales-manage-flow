@@ -148,6 +148,7 @@ export interface TaskInsert {
   title: string;
   description?: string;
   assignee_id?: string | null;
+  participant_ids?: string[];
   due_date?: string | null;
   priority?: 'low' | 'normal' | 'high';
   status?: 'todo' | 'doing' | 'done';
@@ -178,6 +179,7 @@ export async function createTask(input: TaskInsert): Promise<string> {
     title: input.title,
     description: input.description ?? '',
     assignee_id: input.assignee_id ?? null,
+    participant_ids: input.participant_ids ?? [],
     due_date: input.due_date ?? null,
     priority: input.priority ?? 'normal',
     status: input.status ?? 'todo',
@@ -190,7 +192,7 @@ export async function createTask(input: TaskInsert): Promise<string> {
 
 export async function patchTask(
   taskId: string,
-  patch: Partial<{ title: string; description: string; assignee_id: string | null; due_date: string | null; priority: 'low' | 'normal' | 'high'; status: 'todo' | 'doing' | 'done' }>,
+  patch: Partial<{ title: string; description: string; assignee_id: string | null; participant_ids: string[]; due_date: string | null; priority: 'low' | 'normal' | 'high'; status: 'todo' | 'doing' | 'done' }>,
 ): Promise<void> {
   const supabase = createClient();
   const next: Record<string, unknown> = { ...patch };
