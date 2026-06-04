@@ -116,6 +116,53 @@ function ParticipantPicker({
   );
 }
 
+// 時間下拉:時(00–23)+ 分(每 10 分一格)。用 <select> 取代 native time input,
+// 解決兩件事:(1) 分鐘只出現 00/10/20/30/40/50;(2) 整個欄位都可點開(不必對準時鐘 icon)。
+// value / onChange 用 'HH:MM' 字串(或 null = 未設)。選時但未選分 → 預設 00 分。
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTE_OPTIONS = ['00', '10', '20', '30', '40', '50'];
+
+function TimeSelect({
+  value, onChange, disabled, selectClassName, title,
+}: {
+  value: string | null;
+  onChange: (next: string | null) => void;
+  disabled?: boolean;
+  selectClassName?: string;
+  title?: string;
+}) {
+  const hh = value ? value.slice(0, 2) : '';
+  const mmRaw = value ? value.slice(3, 5) : '';
+  // 既有資料若非 10 分整(例如舊的 :35),顯示退回 00,待使用者重選;不主動改 DB。
+  const mm = MINUTE_OPTIONS.includes(mmRaw) ? mmRaw : value ? '00' : '';
+
+  return (
+    <span className="inline-flex items-center gap-0.5" title={title}>
+      <select
+        disabled={disabled}
+        value={hh}
+        onChange={(e) => onChange(e.target.value ? `${e.target.value}:${mm || '00'}` : null)}
+        className={selectClassName}
+        aria-label="小時"
+      >
+        <option value="">時</option>
+        {HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+      </select>
+      <span className="font-v4-mono text-[10px] text-ink/40">:</span>
+      <select
+        disabled={disabled || !hh}
+        value={mm}
+        onChange={(e) => onChange(`${hh || '00'}:${e.target.value || '00'}`)}
+        className={selectClassName}
+        aria-label="分鐘"
+      >
+        <option value="">分</option>
+        {MINUTE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+    </span>
+  );
+}
+
 export function TaskRow({
   task, snapshot, base, isFixtures, onLocalPatch, onLocalDelete,
 }: {
@@ -139,6 +186,8 @@ export function TaskRow({
   const [localAssignee, setLocalAssignee] = useState<string | null>(task.assignee_id);
   const [localParticipants, setLocalParticipants] = useState<string[]>(task.participant_ids ?? []);
   const [localDue, setLocalDue] = useState<string | null>(task.due_date);
+  const [localStart, setLocalStart] = useState<string | null>(task.start_time ?? null);
+  const [localEnd, setLocalEnd] = useState<string | null>(task.end_time ?? null);
   const [removed, setRemoved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -147,6 +196,8 @@ export function TaskRow({
   useEffect(() => { setLocalAssignee(task.assignee_id); }, [task.assignee_id]);
   useEffect(() => { setLocalParticipants(task.participant_ids ?? []); }, [task.participant_ids]);
   useEffect(() => { setLocalDue(task.due_date); }, [task.due_date]);
+  useEffect(() => { setLocalStart(task.start_time ?? null); }, [task.start_time]);
+  useEffect(() => { setLocalEnd(task.end_time ?? null); }, [task.end_time]);
 
   if (removed) return null;
 
@@ -228,6 +279,32 @@ export function TaskRow({
     patchTask(task.id, { due_date: next }).catch((e) => {
       setLocalDue(prev);
       onLocalPatch?.(task.id, { due_date: prev });
+      setErr((e as Error).message);
+    });
+  }
+
+  function changeStart(next: string | null) {
+    if (!guard()) return;
+    const prev = localStart;
+    setLocalStart(next);
+    onLocalPatch?.(task.id, { start_time: next });
+    setErr(null);
+    patchTask(task.id, { start_time: next }).catch((e) => {
+      setLocalStart(prev);
+      onLocalPatch?.(task.id, { start_time: prev });
+      setErr((e as Error).message);
+    });
+  }
+
+  function changeEnd(next: string | null) {
+    if (!guard()) return;
+    const prev = localEnd;
+    setLocalEnd(next);
+    onLocalPatch?.(task.id, { end_time: next });
+    setErr(null);
+    patchTask(task.id, { end_time: next }).catch((e) => {
+      setLocalEnd(prev);
+      onLocalPatch?.(task.id, { end_time: prev });
       setErr((e as Error).message);
     });
   }
@@ -326,6 +403,33 @@ export function TaskRow({
             )}
           />
 
+          {/* 時間段(可選;不填則整天) */}
+          <TimeSelect
+            value={localStart}
+            onChange={changeStart}
+            disabled={locked || !localDue}
+            title={localDue ? '開始時間(不填=整天工作)' : '先設到期日才能設時間'}
+            selectClassName={cn(
+              controlBase, 'border-ink/15 bg-paper text-ink/65',
+              locked || !localDue ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-ink/40',
+            )}
+          />
+          {localStart && (
+            <>
+              <span className="font-v4-mono text-[10px] text-ink/40">~</span>
+              <TimeSelect
+                value={localEnd}
+                onChange={changeEnd}
+                disabled={locked || !localDue}
+                title="結束時間(不填=開始 +1 小時)"
+                selectClassName={cn(
+                  controlBase, 'border-ink/15 bg-paper text-ink/65',
+                  locked || !localDue ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-ink/40',
+                )}
+              />
+            </>
+          )}
+
           {localDue && !done && (
             <span className={cn('font-v4-mono text-[10px] numeric', dueTone)}>{dueLabel}</span>
           )}
@@ -397,6 +501,8 @@ export function TaskComposer({
   const [assigneeId, setAssigneeId] = useState('');
   const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -407,6 +513,9 @@ export function TaskComposer({
 
     const titleVal = title.trim();
     const dueVal = dueDate || null;
+    // 時間只有在有到期日時才有意義;沒結束時間就交給後端預設 +1 小時
+    const startVal = dueVal ? (startTime || null) : null;
+    const endVal = startVal ? (endTime || null) : null;
     const priVal = priority;
     const linkedDeal = dealId || null;
     const assignee = assigneeId || null;
@@ -422,13 +531,15 @@ export function TaskComposer({
       assignee_id: assignee,
       participant_ids: participants,
       due_date: dueVal,
+      start_time: startVal,
+      end_time: endVal,
       status: 'todo',
       priority: priVal,
       created_at: new Date().toISOString(),
       completed_at: null,
     };
     onCreated?.(tmpTask);
-    setTitle(''); setAssigneeId(''); setParticipantIds([]); setDueDate(''); setPriority('normal'); setExpanded(false);
+    setTitle(''); setAssigneeId(''); setParticipantIds([]); setDueDate(''); setStartTime(''); setEndTime(''); setPriority('normal'); setExpanded(false);
     setErr(null);
 
     // DB 寫入背景跑;成功就把 tmp id 換成真 id(後續 toggle/delete 才打得到 row),
@@ -439,6 +550,8 @@ export function TaskComposer({
       assignee_id: assignee,
       participant_ids: participants,
       due_date: dueVal,
+      start_time: startVal,
+      end_time: endVal,
       priority: priVal,
       status: 'todo',
     })
@@ -514,6 +627,24 @@ export function TaskComposer({
           onChange={(e) => setDueDate(e.target.value)}
           className={cn(fieldCls, 'font-v4-mono')}
         />
+        <TimeSelect
+          value={startTime || null}
+          onChange={(v) => setStartTime(v ?? '')}
+          disabled={!dueDate}
+          title={dueDate ? '開始時間(不填=整天工作)' : '先設到期日才能設時間'}
+          selectClassName={cn(fieldCls, 'font-v4-mono', !dueDate && 'cursor-not-allowed opacity-50')}
+        />
+        {startTime && (
+          <>
+            <span className="font-v4-mono text-[10px] text-ink/40">~</span>
+            <TimeSelect
+              value={endTime || null}
+              onChange={(v) => setEndTime(v ?? '')}
+              title="結束時間(不填=開始 +1 小時)"
+              selectClassName={cn(fieldCls, 'font-v4-mono')}
+            />
+          </>
+        )}
         <select
           value={priority}
           onChange={(e) => setPriority(e.target.value as TaskPriority)}

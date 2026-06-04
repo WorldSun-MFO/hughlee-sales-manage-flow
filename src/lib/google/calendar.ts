@@ -73,25 +73,62 @@ export async function getAccessToken(userId: string): Promise<string | null> {
 
 // ---------- 事件 ----------
 
+// 時段事件一律以台灣時間解讀(時刻欄位只存當天牆上時間,不含時區)
+const EVENT_TZ = 'Asia/Taipei';
+
 export interface EventInput {
   title: string;
   description?: string;
   dueDate: string; // YYYY-MM-DD
+  startTime?: string | null; // 'HH:MM' / 'HH:MM:SS';null = 整天事件
+  endTime?: string | null;   // 同上;null 或 <= startTime → startTime + 1 小時
   attendeeEmails?: string[]; // 主責人 + 協作者(已過濾為 @wsgfo.com、去重)
 }
 
+// 'HH:MM' / 'HH:MM:SS' → 'HH:MM:SS'(補秒、補零)
+function normTime(t: string): string {
+  const [h = '00', m = '00', s = '00'] = t.split(':');
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}:${s.padStart(2, '0')}`;
+}
+
+// 結束時刻:有填且晚於開始就用它,否則開始 + 1 小時(同日內,跨午夜則夾到 23:59)
+function resolveEndTime(start: string, end?: string | null): string {
+  const s = normTime(start);
+  if (end) {
+    const e = normTime(end);
+    if (e > s) return e;
+  }
+  const [h, m] = start.split(':').map(Number);
+  const total = Math.min(h * 60 + m + 60, 23 * 60 + 59);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}:00`;
+}
+
 function eventBody(input: EventInput) {
-  // 全天事件:end.date 為「不含」當天,單日事件 end = due + 1
+  const attendees = input.attendeeEmails?.length
+    ? input.attendeeEmails.map((email) => ({ email }))
+    : undefined;
+  // 不指定 reminders:Google 會自動套用該行事曆的「預設提醒」(等同
+  // useDefault:true)。刻意不送 useDefault —— PATCH 既有事件時,若該事件
+  // 已帶 overrides,送 useDefault:true 會與之並存而觸發 400
+  // (cannotUseDefaultRemindersAndSpecifyOverride)。
+  const base = { summary: input.title, description: input.description || undefined, attendees };
+
+  // 有開始時間 → 建「時段」事件;否則整天事件(end.date 為「不含」當天,= due + 1)
+  // PATCH 既有事件時,Google 不允許同一事件同時有 date 與 dateTime,故把互斥
+  // 欄位顯式設 null 強制清除 —— 這樣整天↔時段雙向切換都不會觸發 400。
+  if (input.startTime) {
+    const startT = normTime(input.startTime);
+    const endT = resolveEndTime(input.startTime, input.endTime);
+    return {
+      ...base,
+      start: { date: null, dateTime: `${input.dueDate}T${startT}`, timeZone: EVENT_TZ },
+      end: { date: null, dateTime: `${input.dueDate}T${endT}`, timeZone: EVENT_TZ },
+    };
+  }
   return {
-    summary: input.title,
-    description: input.description || undefined,
-    start: { date: input.dueDate },
-    end: { date: addDays(input.dueDate, 1) },
-    attendees: input.attendeeEmails?.length ? input.attendeeEmails.map((email) => ({ email })) : undefined,
-    // 不指定 reminders:Google 會自動套用該行事曆的「預設提醒」(等同
-    // useDefault:true)。刻意不送 useDefault —— PATCH 既有事件時,若該事件
-    // 已帶 overrides,送 useDefault:true 會與之並存而觸發 400
-    // (cannotUseDefaultRemindersAndSpecifyOverride)。
+    ...base,
+    start: { date: input.dueDate, dateTime: null, timeZone: null },
+    end: { date: addDays(input.dueDate, 1), dateTime: null, timeZone: null },
   };
 }
 
@@ -151,7 +188,7 @@ export async function upsertTaskEvent(operatorId: string, taskId: string): Promi
   const svc = createServiceClient();
   const { data: taskRow } = await svc
     .from('tasks')
-    .select('id, title, description, due_date, status, assignee_id, participant_ids, google_event_id, google_event_owner')
+    .select('id, title, description, due_date, start_time, end_time, status, assignee_id, participant_ids, google_event_id, google_event_owner')
     .eq('id', taskId)
     .maybeSingle();
   if (!taskRow) return { ok: false, skipped: 'task not found' };
@@ -161,6 +198,8 @@ export async function upsertTaskEvent(operatorId: string, taskId: string): Promi
     title: string;
     description: string | null;
     due_date: string | null;
+    start_time: string | null;
+    end_time: string | null;
     status: string;
     assignee_id: string | null;
     participant_ids: string[] | null;
@@ -206,6 +245,8 @@ export async function upsertTaskEvent(operatorId: string, taskId: string): Promi
     title: t.title,
     description: t.description ?? '',
     dueDate: t.due_date,
+    startTime: t.start_time,
+    endTime: t.end_time,
     attendeeEmails,
   };
 
