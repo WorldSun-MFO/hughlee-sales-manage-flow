@@ -319,17 +319,23 @@ export async function recordSyncError(taskId: string, message: string): Promise<
 // 空檔建議(FreeBusy)—— 選了協作人就自動推薦「大家都有空」的開會時段
 // ============================================================
 // 用 operator 的 token 查與會者(@wsgfo.com)未來數天的忙碌區間,取交集後,
-// 在工作時段(台灣 08:00–19:00,午休 12–13 不排)以「半天」為單位,從現在的
-// 下一個半天起往後掃,每個半天取最早可用時段,推薦最近 5 個(含日期)。
+// 以「半天」為單位、只在平日(跳過六日)、從現在的下一個半天起往後掃,
+// 每個半天取最早可用時段,推薦最近 5 個(含日期)。
+//
+// 時段偏好:主要 10:00–17:00(各半天的核心),不夠才用次要 09:00–18:00 的
+//   邊緣時段補。午休 12–13 不排。
 //
 // 「半天往後」邏輯:現在是早上 → 最推薦今天下午;現在是下午/晚上 → 最推薦
-//   隔天早上;某半天排不下就順延到下一個半天。Google 無公開「智慧找時間」
-//   API,交集演算法自己做。
+//   隔天早上;某半天排不下就順延到下一個(平日)半天。Google 無公開「智慧
+//   找時間」API,交集演算法自己做。
 
 const TZ_OFFSET = '+08:00'; // 台灣固定 +08:00,無日光節約,可硬編
-const MORNING: [string, string] = ['08:00', '12:00'];   // 上午半天(午休 12–13 不排)
-const AFTERNOON: [string, string] = ['13:00', '19:00']; // 下午半天(開始時間上限 19:00)
-const SEARCH_DAYS = 14; // 往後最多找幾天
+// 半天視窗:primary = 主要(核心)時段;full = 次要(含 09–10、17–18 邊緣)
+const MORNING_PRIMARY: [string, string] = ['10:00', '12:00'];
+const MORNING_FULL: [string, string] = ['09:00', '12:00'];
+const AFTERNOON_PRIMARY: [string, string] = ['13:00', '17:00'];
+const AFTERNOON_FULL: [string, string] = ['13:00', '18:00'];
+const SEARCH_DAYS = 21; // 往後最多找幾天(跳過週末,需多留幾天)
 const NEED_SLOTS = 5;
 
 // date 'YYYY-MM-DD' + 'HH:MM' → epoch(ms),以台灣時間解讀
@@ -368,6 +374,7 @@ export interface FreeSlot {
   date: string;  // 'YYYY-MM-DD'
   start: string; // 'HH:MM' 台灣當地
   end: string;   // 'HH:MM'
+  offPeak?: boolean; // true = 落在次要(09–10 / 17–18)邊緣時段
 }
 
 export async function suggestFreeSlots(
@@ -431,19 +438,40 @@ export async function suggestFreeSlots(
     else merged.push([s0, e0]);
   }
 
-  // 從起算半天往後,每個半天取最早可用時段,湊滿 5 個
+  // 從起算半天往後(只平日),每個半天取最早可用時段。優先用「主要時段
+  // (10–17)」湊滿 5 個;主要不夠時才用「次要邊緣(09–18)」補。
   const dur = durationMin * 60_000;
-  const slots: FreeSlot[] = [];
-  for (let i = 0; i < SEARCH_DAYS && slots.length < NEED_SLOTS; i += 1) {
+  const primary: FreeSlot[] = [];
+  const secondary: FreeSlot[] = [];
+  for (let i = 0; i < SEARCH_DAYS && primary.length < NEED_SLOTS; i += 1) {
     const d = addDays(startDate, i);
-    const segs: [string, string][] = [];
-    if (!(i === 0 && skipMorningFirstDay)) segs.push(MORNING);
-    segs.push(AFTERNOON);
-    for (const [a, b] of segs) {
-      if (slots.length >= NEED_SLOTS) break;
-      const s = firstFreeStart(taipeiEpoch(d, a), taipeiEpoch(d, b), merged, dur);
-      if (s != null) slots.push({ date: d, start: epochToTaipeiHHMM(s), end: epochToTaipeiHHMM(s + dur) });
+    const [yy, mm, dd] = d.split('-').map(Number);
+    const dow = new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay(); // 0=日 .. 6=六
+    if (dow === 0 || dow === 6) continue; // 跳過週末
+
+    const blocks: { primary: [string, string]; full: [string, string]; morning: boolean }[] = [
+      { primary: MORNING_PRIMARY, full: MORNING_FULL, morning: true },
+      { primary: AFTERNOON_PRIMARY, full: AFTERNOON_FULL, morning: false },
+    ];
+    for (const blk of blocks) {
+      if (primary.length >= NEED_SLOTS) break;
+      if (i === 0 && skipMorningFirstDay && blk.morning) continue; // 今天上午已過,跳過
+      // 先找主要(核心)時段
+      const ps = firstFreeStart(taipeiEpoch(d, blk.primary[0]), taipeiEpoch(d, blk.primary[1]), merged, dur);
+      if (ps != null) {
+        primary.push({ date: d, start: epochToTaipeiHHMM(ps), end: epochToTaipeiHHMM(ps + dur) });
+        continue;
+      }
+      // 核心排不下 → 找次要(含邊緣)時段,先暫存,主要不足時才補
+      const ss = firstFreeStart(taipeiEpoch(d, blk.full[0]), taipeiEpoch(d, blk.full[1]), merged, dur);
+      if (ss != null) secondary.push({ date: d, start: epochToTaipeiHHMM(ss), end: epochToTaipeiHHMM(ss + dur), offPeak: true });
     }
+  }
+  // 主要時段優先;不足 5 個再用次要邊緣補滿
+  const slots = primary.slice(0, NEED_SLOTS);
+  for (const s of secondary) {
+    if (slots.length >= NEED_SLOTS) break;
+    slots.push(s);
   }
 
   const note = unreadable.length

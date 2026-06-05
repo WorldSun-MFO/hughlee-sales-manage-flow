@@ -193,7 +193,7 @@ function FreeSlotSuggester({
 }) {
   const [duration, setDuration] = useState(60);
   const [loading, setLoading] = useState(false);
-  const [slots, setSlots] = useState<{ date: string; start: string; end: string }[]>([]);
+  const [slots, setSlots] = useState<{ date: string; start: string; end: string; offPeak?: boolean }[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
 
   const key = attendeeIds.join(',');
@@ -266,7 +266,8 @@ function FreeSlotSuggester({
               )}
             >
               <span className="font-v4-mono">{dateLabel(s.date)} {s.start}–{s.end}</span>
-              {i === 0 && <span className="text-[9px] text-cobalt/80">最推薦</span>}
+              {i === 0 && !s.offPeak && <span className="text-[9px] text-cobalt/80">最推薦</span>}
+              {s.offPeak && <span className="text-[9px] text-brass">次要時段</span>}
             </button>
           ))}
         </div>
@@ -706,7 +707,11 @@ export function TaskComposer({
         onChange={(e) => setTitle(e.target.value)}
         autoFocus
         placeholder="任務標題,例如「準備配偶同席的一頁 EB 摘要」"
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') setExpanded(false); }}
+        onKeyDown={(e) => {
+          // 輸入法組字中(打中文按 Enter 確認選字)不可當成送出,否則中文還沒打完就被新增
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
+          if (e.key === 'Escape') setExpanded(false);
+        }}
         className="w-full rounded-md border border-ink/12 bg-cream/40 px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none"
       />
       <div className="flex flex-wrap items-center gap-2">
@@ -779,7 +784,7 @@ export function TaskComposer({
           <option value="low">低</option>
         </select>
         <div className="ml-auto flex items-center gap-1.5">
-          <button type="button" onClick={() => setExpanded(false)} className="rounded-md px-2 py-1.5 text-xs text-ink/55 hover:text-ink">取消</button>
+          <button type="button" onClick={() => setExpanded(false)} className="rounded-md border border-ink/15 bg-paper px-3 py-1.5 text-xs text-ink/70 hover:border-ink/30 hover:text-ink">取消</button>
           <button
             type="button"
             onClick={submit}
