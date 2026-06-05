@@ -104,15 +104,32 @@ function resolveEndTime(start: string, end?: string | null): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}:00`;
 }
 
+// 任務提醒:到期前 7 天、3 天各發 email + 彈窗。
+// ⚠️ Google 設計上 reminders.overrides 只對「事件擁有者(建立者)本人」的
+//    行事曆生效;協作人用各自的預設提醒,建立者無法強制覆蓋。故提醒主要送達
+//    建立任務的人,通知字句另寫進事件說明,讓所有與會者在邀請/事件上都看得到。
+const REMINDER_NOTICE = '如有需要請提前通知後勤部門';
+const TASK_REMINDERS = [
+  { method: 'email', minutes: 7 * 24 * 60 }, // 前 7 天
+  { method: 'popup', minutes: 7 * 24 * 60 },
+  { method: 'email', minutes: 3 * 24 * 60 }, // 前 3 天
+  { method: 'popup', minutes: 3 * 24 * 60 },
+];
+
 function eventBody(input: EventInput) {
   const attendees = input.attendeeEmails?.length
     ? input.attendeeEmails.map((email) => ({ email }))
     : undefined;
-  // 不指定 reminders:Google 會自動套用該行事曆的「預設提醒」(等同
-  // useDefault:true)。刻意不送 useDefault —— PATCH 既有事件時,若該事件
-  // 已帶 overrides,送 useDefault:true 會與之並存而觸發 400
-  // (cannotUseDefaultRemindersAndSpecifyOverride)。
-  const base = { summary: input.title, description: input.description || undefined, attendees };
+  // 事件說明 = 任務描述 + 固定通知字句(讓與會者在邀請/事件上看得到)
+  const description = [input.description?.trim(), REMINDER_NOTICE].filter(Boolean).join('\n\n');
+  // useDefault:false + overrides 才合法(useDefault:true + overrides 會觸發
+  // 400 cannotUseDefaultRemindersAndSpecifyOverride)。
+  const base = {
+    summary: input.title,
+    description,
+    attendees,
+    reminders: { useDefault: false, overrides: TASK_REMINDERS },
+  };
 
   // 有開始時間 → 建「時段」事件;否則整天事件(end.date 為「不含」當天,= due + 1)
   // PATCH 既有事件時,Google 不允許同一事件同時有 date 與 dateTime,故把互斥
