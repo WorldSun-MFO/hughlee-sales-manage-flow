@@ -508,6 +508,7 @@ export function TaskRow({
             type="date"
             value={localDue ?? ''}
             onChange={(e) => changeDue(e.target.value || null)}
+            onClick={(e) => { try { e.currentTarget.showPicker(); } catch { /* 不支援就維持原生行為 */ } }}
             disabled={locked}
             title="到期日"
             className={cn(
@@ -742,6 +743,7 @@ export function TaskComposer({
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
+          onClick={(e) => { try { e.currentTarget.showPicker(); } catch { /* 不支援就維持原生行為 */ } }}
           className={cn(fieldCls, 'font-v4-mono')}
         />
         <TimeSelect
