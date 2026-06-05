@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Trash2, Check, Users } from 'lucide-react';
+import { Trash2, Check, Users, Sparkles } from 'lucide-react';
 import type { Task, TaskStatus, TaskPriority, Snapshot } from '@/lib/v4/types';
 import { cn, daysUntil } from '@/lib/v4/utils';
 import { patchTask, deleteTask, createTask } from '@/lib/v4/mutations';
@@ -116,21 +116,27 @@ function ParticipantPicker({
   );
 }
 
-// 時間下拉:時(00–23)+ 分(每 10 分一格)。用 <select> 取代 native time input,
+// 時間下拉:時 + 分(每 10 分一格)。用 <select> 取代 native time input,
 // 解決兩件事:(1) 分鐘只出現 00/10/20/30/40/50;(2) 整個欄位都可點開(不必對準時鐘 icon)。
 // value / onChange 用 'HH:MM' 字串(或 null = 未設)。選時但未選分 → 預設 00 分。
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+// minHour / maxHour 限制可選的小時(例如開始時間只給 8–19)。
 const MINUTE_OPTIONS = ['00', '10', '20', '30', '40', '50'];
 
 function TimeSelect({
-  value, onChange, disabled, selectClassName, title,
+  value, onChange, disabled, selectClassName, title, minHour = 0, maxHour = 23,
 }: {
   value: string | null;
   onChange: (next: string | null) => void;
   disabled?: boolean;
   selectClassName?: string;
   title?: string;
+  minHour?: number;
+  maxHour?: number;
 }) {
+  const hourOptions = Array.from(
+    { length: Math.max(0, maxHour - minHour + 1) },
+    (_, i) => String(minHour + i).padStart(2, '0'),
+  );
   const hh = value ? value.slice(0, 2) : '';
   const mmRaw = value ? value.slice(3, 5) : '';
   // 既有資料若非 10 分整(例如舊的 :35),顯示退回 00,待使用者重選;不主動改 DB。
@@ -146,7 +152,7 @@ function TimeSelect({
         aria-label="小時"
       >
         <option value="">時</option>
-        {HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+        {hourOptions.map((h) => <option key={h} value={h}>{h}</option>)}
       </select>
       <span className="font-v4-mono text-[10px] text-ink/40">:</span>
       <select
@@ -160,6 +166,113 @@ function TimeSelect({
         {MINUTE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
       </select>
     </span>
+  );
+}
+
+// 建議開會時段:選了協作人就自動查與會者(主責人 + 協作者)的 Google
+// free/busy,從現在的下一個半天往後,列出最近 5 個大家都有空的時段(含日期)。
+// 點某個時段即把日期 + 開始/結束時間一次填入。
+const DURATION_OPTIONS = [30, 60, 90];
+
+// 'YYYY-MM-DD' → 今天 / 明天 / M/D(週X)
+function dateLabel(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return '今天';
+  if (diff === 1) return '明天';
+  const wd = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+  return `${d.getMonth() + 1}/${d.getDate()}(週${wd})`;
+}
+
+function FreeSlotSuggester({
+  attendeeIds, onPick,
+}: {
+  attendeeIds: string[];
+  onPick: (date: string, start: string, end: string) => void;
+}) {
+  const [duration, setDuration] = useState(60);
+  const [loading, setLoading] = useState(false);
+  const [slots, setSlots] = useState<{ date: string; start: string; end: string }[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const key = attendeeIds.join(',');
+  // 自動查:與會者或時長變動 → debounce 500ms 後查(避免每點一人就打一次 API)
+  useEffect(() => {
+    if (!attendeeIds.length) { setSlots([]); setMsg(null); setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true); setMsg(null);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/calendar/free-slots', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ attendeeIds, durationMin: duration }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) { setSlots([]); setMsg(json.error || '查詢失敗'); return; }
+        setSlots(json.slots ?? []);
+        setMsg(!json.slots?.length ? (json.note || '近期工作時段內找不到大家都有空的時段') : (json.note ?? null));
+      } catch {
+        if (!cancelled) { setSlots([]); setMsg('查詢失敗,請稍後再試'); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // attendeeIds 以 key(join 字串)代表,避免陣列每次 render 都換 identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, duration]);
+
+  if (!attendeeIds.length) return null;
+
+  return (
+    <div className="rounded-md border border-cobalt/20 bg-cobalt/5 p-2.5">
+      <div className="mb-2 flex items-center gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-cobalt" strokeWidth={2} />
+        <span className="text-xs font-semibold text-cobalt">建議開會時段</span>
+        <div className="ml-auto flex items-center gap-1">
+          {DURATION_OPTIONS.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setDuration(d)}
+              className={cn(
+                'rounded-sm border px-1.5 py-0.5 font-v4-mono text-[10px] transition',
+                d === duration ? 'border-cobalt/40 bg-cobalt/10 text-cobalt' : 'border-ink/15 text-ink/55 hover:border-ink/35',
+              )}
+            >
+              {d}分
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="px-1 py-1.5 text-[11px] text-ink/45">查詢同事行事曆中…</div>
+      ) : slots.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {slots.map((s, i) => (
+            <button
+              key={`${s.date}-${s.start}`}
+              type="button"
+              onClick={() => onPick(s.date, s.start, s.end)}
+              title="填入此日期與時間"
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition',
+                i === 0
+                  ? 'border-cobalt/50 bg-cobalt/10 font-semibold text-cobalt'
+                  : 'border-ink/15 bg-paper text-ink/70 hover:border-cobalt/40 hover:bg-cobalt/5',
+              )}
+            >
+              <span className="font-v4-mono">{dateLabel(s.date)} {s.start}–{s.end}</span>
+              {i === 0 && <span className="text-[9px] text-cobalt/80">最推薦</span>}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {msg && <div className="mt-1.5 px-1 text-[10.5px] text-ink/50">{msg}</div>}
+    </div>
   );
 }
 
@@ -408,7 +521,9 @@ export function TaskRow({
             value={localStart}
             onChange={changeStart}
             disabled={locked || !localDue}
-            title={localDue ? '開始時間(不填=整天工作)' : '先設到期日才能設時間'}
+            minHour={8}
+            maxHour={19}
+            title={localDue ? '開始時間 8:00–19:00(不填=整天工作)' : '先設到期日才能設時間'}
             selectClassName={cn(
               controlBase, 'border-ink/15 bg-paper text-ink/65',
               locked || !localDue ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-ink/40',
@@ -421,6 +536,8 @@ export function TaskRow({
                 value={localEnd}
                 onChange={changeEnd}
                 disabled={locked || !localDue}
+                minHour={8}
+                maxHour={20}
                 title="結束時間(不填=開始 +1 小時)"
                 selectClassName={cn(
                   controlBase, 'border-ink/15 bg-paper text-ink/65',
@@ -631,7 +748,9 @@ export function TaskComposer({
           value={startTime || null}
           onChange={(v) => setStartTime(v ?? '')}
           disabled={!dueDate}
-          title={dueDate ? '開始時間(不填=整天工作)' : '先設到期日才能設時間'}
+          minHour={8}
+          maxHour={19}
+          title={dueDate ? '開始時間 8:00–19:00(不填=整天工作)' : '先設到期日才能設時間'}
           selectClassName={cn(fieldCls, 'font-v4-mono', !dueDate && 'cursor-not-allowed opacity-50')}
         />
         {startTime && (
@@ -640,6 +759,8 @@ export function TaskComposer({
             <TimeSelect
               value={endTime || null}
               onChange={(v) => setEndTime(v ?? '')}
+              minHour={8}
+              maxHour={20}
               title="結束時間(不填=開始 +1 小時)"
               selectClassName={cn(fieldCls, 'font-v4-mono')}
             />
@@ -668,6 +789,11 @@ export function TaskComposer({
           </button>
         </div>
       </div>
+      {/* 有選協作人(代表要開會)才自動推薦大家都有空的日期+時段;點一下填入到期日與時間 */}
+      <FreeSlotSuggester
+        attendeeIds={participantIds.length ? [assigneeId, ...participantIds].filter(Boolean) : []}
+        onPick={(date, start, end) => { setDueDate(date); setStartTime(start); setEndTime(end); }}
+      />
       {err && <div className="text-[11px] text-claret">{err}</div>}
       <div className="font-v4-mono text-[10.5px] text-ink/45">Enter 新增 · Esc 取消</div>
     </div>

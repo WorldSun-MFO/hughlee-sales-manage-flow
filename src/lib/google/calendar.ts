@@ -16,6 +16,7 @@ import { encryptToken, decryptToken } from '@/lib/google/crypto';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const CAL_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const FREEBUSY_URL = 'https://www.googleapis.com/calendar/v3/freeBusy';
 
 // 事件已不存在(被使用者手動刪掉)→ 呼叫端可改走「重新建立」
 export class EventGoneError extends Error {
@@ -312,4 +313,141 @@ export async function recordSyncError(taskId: string, message: string): Promise<
     .update({ google_sync_error: message.slice(0, 500) })
     .eq('id', taskId)
     .then(() => {}, () => {});
+}
+
+// ============================================================
+// 空檔建議(FreeBusy)—— 選了協作人就自動推薦「大家都有空」的開會時段
+// ============================================================
+// 用 operator 的 token 查與會者(@wsgfo.com)未來數天的忙碌區間,取交集後,
+// 在工作時段(台灣 08:00–19:00,午休 12–13 不排)以「半天」為單位,從現在的
+// 下一個半天起往後掃,每個半天取最早可用時段,推薦最近 5 個(含日期)。
+//
+// 「半天往後」邏輯:現在是早上 → 最推薦今天下午;現在是下午/晚上 → 最推薦
+//   隔天早上;某半天排不下就順延到下一個半天。Google 無公開「智慧找時間」
+//   API,交集演算法自己做。
+
+const TZ_OFFSET = '+08:00'; // 台灣固定 +08:00,無日光節約,可硬編
+const MORNING: [string, string] = ['08:00', '12:00'];   // 上午半天(午休 12–13 不排)
+const AFTERNOON: [string, string] = ['13:00', '19:00']; // 下午半天(開始時間上限 19:00)
+const SEARCH_DAYS = 14; // 往後最多找幾天
+const NEED_SLOTS = 5;
+
+// date 'YYYY-MM-DD' + 'HH:MM' → epoch(ms),以台灣時間解讀
+function taipeiEpoch(date: string, hm: string): number {
+  return new Date(`${date}T${hm}:00${TZ_OFFSET}`).getTime();
+}
+
+// epoch(ms)→ 台灣當地 'HH:MM'
+function epochToTaipeiHHMM(ms: number): string {
+  return new Date(ms).toLocaleTimeString('en-GB', {
+    timeZone: 'Asia/Taipei', hour12: false, hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// 在 [winStart, winEnd] 視窗內、扣掉 merged 忙碌後,回傳最早可塞下 dur 的開始
+// epoch(進位到 10 分整點);塞不下回 null。
+function firstFreeStart(winStart: number, winEnd: number, merged: [number, number][], dur: number): number | null {
+  const gaps: [number, number][] = [];
+  let cursor = winStart;
+  for (const [bs, be] of merged) {
+    if (be <= winStart) continue;
+    if (bs >= winEnd) break;
+    if (Math.min(bs, winEnd) > cursor) gaps.push([cursor, Math.min(bs, winEnd)]);
+    cursor = Math.max(cursor, be);
+    if (cursor >= winEnd) break;
+  }
+  if (cursor < winEnd) gaps.push([cursor, winEnd]);
+  for (const [gs, ge] of gaps) {
+    const s = Math.ceil(gs / 600_000) * 600_000; // 進位到下一個 10 分整點
+    if (s + dur <= ge) return s;
+  }
+  return null;
+}
+
+export interface FreeSlot {
+  date: string;  // 'YYYY-MM-DD'
+  start: string; // 'HH:MM' 台灣當地
+  end: string;   // 'HH:MM'
+}
+
+export async function suggestFreeSlots(
+  operatorId: string,
+  attendeeUserIds: string[],
+  durationMin: number,
+): Promise<{ slots: FreeSlot[]; note?: string }> {
+  const svc = createServiceClient();
+  const ids = Array.from(new Set(attendeeUserIds.filter(Boolean)));
+  if (!ids.length) return { slots: [], note: '沒有指定與會者' };
+
+  const { data: ps } = await svc.from('profiles').select('id, email').in('id', ids);
+  const emails = Array.from(new Set(
+    ((ps as { id: string; email?: string }[] | null) ?? [])
+      .map((p) => p.email?.toLowerCase())
+      .filter((e): e is string => !!e && e.endsWith('@wsgfo.com')),
+  ));
+  if (!emails.length) return { slots: [], note: '與會者沒有可查詢的公司帳號' };
+
+  const token = await getAccessToken(operatorId);
+  if (!token) throw new Error('no_credentials');
+
+  // 決定起算半天:現在(台灣)早上 → 今天下午起;否則 → 隔天早上起
+  const nowMs = Date.now();
+  const todayStr = new Date(nowMs).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }); // 'YYYY-MM-DD'
+  const taipeiHour = Number(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(nowMs),
+  );
+  const startDate = taipeiHour < 12 ? todayStr : addDays(todayStr, 1);
+  const skipMorningFirstDay = taipeiHour < 12; // 早上設定 → 跳過今天上午,從今天下午開始
+
+  // 一次查整段範圍的 free/busy
+  const res = await fetch(FREEBUSY_URL, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      timeMin: `${startDate}T00:00:00${TZ_OFFSET}`,
+      timeMax: `${addDays(startDate, SEARCH_DAYS)}T00:00:00${TZ_OFFSET}`,
+      timeZone: 'Asia/Taipei',
+      items: emails.map((id) => ({ id })),
+    }),
+  });
+  if (res.status === 403) throw new Error('insufficient_scope');
+  if (!res.ok) throw new Error(`freeBusy failed: ${res.status} ${await res.text()}`);
+  const json = (await res.json()) as {
+    calendars?: Record<string, { busy?: { start: string; end: string }[]; errors?: unknown[] }>;
+  };
+
+  const raw: [number, number][] = [];
+  const unreadable: string[] = [];
+  for (const email of emails) {
+    const cal = json.calendars?.[email];
+    if (!cal || (cal.errors && cal.errors.length)) { unreadable.push(email); continue; }
+    for (const b of cal.busy ?? []) raw.push([new Date(b.start).getTime(), new Date(b.end).getTime()]);
+  }
+  // 合併所有人的忙碌區間(union)
+  const merged: [number, number][] = [];
+  for (const [s0, e0] of raw.filter(([s, e]) => e > s).sort((a, b) => a[0] - b[0])) {
+    const last = merged[merged.length - 1];
+    if (last && s0 <= last[1]) last[1] = Math.max(last[1], e0);
+    else merged.push([s0, e0]);
+  }
+
+  // 從起算半天往後,每個半天取最早可用時段,湊滿 5 個
+  const dur = durationMin * 60_000;
+  const slots: FreeSlot[] = [];
+  for (let i = 0; i < SEARCH_DAYS && slots.length < NEED_SLOTS; i += 1) {
+    const d = addDays(startDate, i);
+    const segs: [string, string][] = [];
+    if (!(i === 0 && skipMorningFirstDay)) segs.push(MORNING);
+    segs.push(AFTERNOON);
+    for (const [a, b] of segs) {
+      if (slots.length >= NEED_SLOTS) break;
+      const s = firstFreeStart(taipeiEpoch(d, a), taipeiEpoch(d, b), merged, dur);
+      if (s != null) slots.push({ date: d, start: epochToTaipeiHHMM(s), end: epochToTaipeiHHMM(s + dur) });
+    }
+  }
+
+  const note = unreadable.length
+    ? `有 ${unreadable.length} 位同事的行事曆無法查詢(可能未授權),結果僅供參考`
+    : undefined;
+  return { slots, note };
 }

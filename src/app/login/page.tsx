@@ -22,9 +22,11 @@ export default function LoginPage() {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        // 要求 Google 行事曆「事件」讀寫權限 — 任務指派時把任務同步成行事曆事件。
-        // 需搭配:GCP 啟用 Calendar API + OAuth 同意畫面加同一個 scope。
-        scopes: 'https://www.googleapis.com/auth/calendar.events',
+        // 要求 Google 行事曆權限:
+        //   calendar.events  — 把任務同步成行事曆事件(建立/修改/刪除)
+        //   calendar.freebusy — 查與會同事的忙碌時段,用來建議大家都有空的開會時間
+        // 需搭配:GCP 啟用 Calendar API + OAuth 同意畫面加上這兩個 scope。
+        scopes: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy',
         // access_type=offline + prompt=consent 確保拿得到 refresh_token(server 端長期同步要用)
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
