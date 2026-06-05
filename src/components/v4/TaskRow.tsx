@@ -16,11 +16,11 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Trash2, Check, Users, Sparkles } from 'lucide-react';
+import { Trash2, Check, Users, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Task, TaskStatus, TaskPriority, Snapshot } from '@/lib/v4/types';
 import { cn, daysUntil } from '@/lib/v4/utils';
 import { patchTask, deleteTask, createTask } from '@/lib/v4/mutations';
-import { InlineText } from '@/components/v4/InlineEdit';
+import { InlineText, InlineTextarea } from '@/components/v4/InlineEdit';
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'todo', label: '待辦' },
@@ -303,7 +303,9 @@ export function TaskRow({
   const [localStart, setLocalStart] = useState<string | null>(task.start_time ?? null);
   const [localEnd, setLocalEnd] = useState<string | null>(task.end_time ?? null);
   const [removed, setRemoved] = useState(false);
+  const [descOpen, setDescOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const hasDesc = !!task.description?.trim();
 
   useEffect(() => { setLocalStatus(task.status); }, [task.status]);
   useEffect(() => { setLocalPriority(task.priority); }, [task.priority]);
@@ -439,11 +441,22 @@ export function TaskRow({
   const controlBase = CONTROL_BASE;
 
   return (
-    <div className={cn(
-      'grid grid-cols-[24px_1fr_auto] items-start gap-3 rounded-md border border-ink/10 bg-paper px-4 py-3 transition',
-      done && 'opacity-60',
-      pending && 'opacity-70',
-    )}>
+    <div
+      // 點任務列「空白處」展開/收合說明;點到互動元件(標題、下拉、按鈕、輸入框、
+      // 連結)不觸發 —— 故標題仍是「點文字才編輯」。
+      onClick={(e) => {
+        if (locked) return;
+        if ((e.target as HTMLElement).closest('button, a, select, input, textarea, label')) return;
+        setDescOpen((o) => !o);
+      }}
+      title={descOpen ? '' : '點空白處展開任務說明'}
+      className={cn(
+        'grid grid-cols-[24px_1fr_auto] items-start gap-3 rounded-md border border-ink/10 bg-paper px-4 py-3 transition',
+        !locked && 'cursor-pointer hover:border-ink/20',
+        done && 'opacity-60',
+        pending && 'opacity-70',
+      )}
+    >
       <button
         type="button"
         onClick={toggleDone}
@@ -580,7 +593,37 @@ export function TaskRow({
           >
             {PRIORITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+
+          {/* 展開填寫任務說明 / 細項 */}
+          <button
+            type="button"
+            onClick={() => setDescOpen((o) => !o)}
+            title="任務說明 / 細項"
+            className={cn(
+              controlBase, 'inline-flex items-center gap-0.5 border-ink/15 bg-paper cursor-pointer hover:border-ink/40',
+              hasDesc ? 'text-cobalt' : 'text-ink/55',
+            )}
+          >
+            {descOpen ? <ChevronDown className="h-3 w-3" strokeWidth={2} /> : <ChevronRight className="h-3 w-3" strokeWidth={2} />}
+            說明{hasDesc && !descOpen ? ' •' : ''}
+          </button>
         </div>
+
+        {descOpen && (
+          <div className="mt-1 rounded-md border border-ink/10 bg-cream/30 p-2" onClick={(e) => e.stopPropagation()}>
+            <InlineTextarea
+              value={task.description || null}
+              onSave={async (next) => {
+                onLocalPatch?.(task.id, { description: next ?? '' });
+                await patchTask(task.id, { description: next ?? '' });
+              }}
+              isFixtures={locked}
+              placeholder="任務說明 / 細項(點此編輯)"
+              rows={3}
+            />
+          </div>
+        )}
+
         {err && <div className="text-[11px] text-claret">{err}</div>}
       </div>
 
@@ -616,6 +659,7 @@ export function TaskComposer({
 }) {
   void base;
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [dealId, setDealId] = useState(defaultDealId ?? '');
   const [assigneeId, setAssigneeId] = useState('');
   const [participantIds, setParticipantIds] = useState<string[]>([]);
@@ -631,6 +675,7 @@ export function TaskComposer({
     if (isFixtures) { setErr('fixtures 模式無法寫入'); return; }
 
     const titleVal = title.trim();
+    const descVal = description.trim();
     const dueVal = dueDate || null;
     // 時間只有在有到期日時才有意義;沒結束時間就交給後端預設 +1 小時
     const startVal = dueVal ? (startTime || null) : null;
@@ -646,7 +691,7 @@ export function TaskComposer({
       id: `tmp-${Date.now()}`,
       deal_id: linkedDeal,
       title: titleVal,
-      description: '',
+      description: descVal,
       assignee_id: assignee,
       participant_ids: participants,
       due_date: dueVal,
@@ -658,7 +703,7 @@ export function TaskComposer({
       completed_at: null,
     };
     onCreated?.(tmpTask);
-    setTitle(''); setAssigneeId(''); setParticipantIds([]); setDueDate(''); setStartTime(''); setEndTime(''); setPriority('normal'); setExpanded(false);
+    setTitle(''); setDescription(''); setAssigneeId(''); setParticipantIds([]); setDueDate(''); setStartTime(''); setEndTime(''); setPriority('normal'); setExpanded(false);
     setErr(null);
 
     // DB 寫入背景跑;成功就把 tmp id 換成真 id(後續 toggle/delete 才打得到 row),
@@ -666,6 +711,7 @@ export function TaskComposer({
     createTask({
       deal_id: linkedDeal,
       title: titleVal,
+      description: descVal || undefined,
       assignee_id: assignee,
       participant_ids: participants,
       due_date: dueVal,
@@ -713,6 +759,14 @@ export function TaskComposer({
           if (e.key === 'Escape') setExpanded(false);
         }}
         className="w-full rounded-md border border-ink/12 bg-cream/40 px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none"
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        rows={2}
+        placeholder="任務說明 / 細項(可選)"
+        onKeyDown={(e) => { if (e.key === 'Escape') setExpanded(false); }}
+        className="w-full resize-vertical rounded-md border border-ink/12 bg-cream/40 px-3 py-2 text-sm leading-6 text-ink focus:border-ink/30 focus:outline-none"
       />
       <div className="flex flex-wrap items-center gap-2">
         {!defaultDealId && (
