@@ -14,7 +14,7 @@
 // 必填:name + aum_usd
 // 建立成功後 router.push 到新 deal 的詳情頁。
 // ============================================================
-import { useState, useTransition } from 'react';
+import { useLayoutEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Loader2, Check } from 'lucide-react';
 import { createDeal } from '@/lib/v4/mutations';
@@ -50,6 +50,28 @@ export function AddDealButton({
   const [rmId, setRmId] = useState(profile?.id ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // AUM 千分位:state(aum)永遠只存純數字,顯示時才加逗號;送出用 Number(aum)。
+  const aumInputRef = useRef<HTMLInputElement>(null);
+  const caretDigitsRef = useRef<number | null>(null);
+  const aumDisplay = aum ? Number(aum).toLocaleString('en-US') : '';
+
+  // 插入逗號會讓游標跳位(頓挫感的來源)。做法:change 時記下「游標左邊有
+  // 幾個數字」,重繪後在 useLayoutEffect(繪製前、不閃)把游標還原到第 N 個
+  // 數字之後 —— 不管逗號怎麼增減,游標都停在使用者剛打的數字旁。
+  useLayoutEffect(() => {
+    const el = aumInputRef.current;
+    const want = caretDigitsRef.current;
+    if (!el || want == null) return;
+    let pos = 0;
+    let seen = 0;
+    while (pos < el.value.length && seen < want) {
+      if (/\d/.test(el.value[pos])) seen += 1;
+      pos += 1;
+    }
+    el.setSelectionRange(pos, pos);
+    caretDigitsRef.current = null;
+  }, [aum]);
 
   // 可指派的 RM 名單(對齊 deals_insert RLS:admin=全部、team_lead=自己團隊、rm=只能自己)
   const role = profile?.role;
@@ -131,13 +153,19 @@ export function AddDealButton({
 
           <Field label="AUM (USD, 必填)" hint="客戶總可投資資產(美元)">
             <input
-              type="number"
-              min={0}
-              step={1000}
-              value={aum}
-              onChange={(e) => setAum(e.target.value)}
+              ref={aumInputRef}
+              type="text"
+              inputMode="numeric"
+              value={aumDisplay}
+              onChange={(e) => {
+                const el = e.target;
+                const caret = el.selectionStart ?? el.value.length;
+                // 記住游標左邊的數字個數,供上面的 useLayoutEffect 還原游標
+                caretDigitsRef.current = el.value.slice(0, caret).replace(/\D/g, '').length;
+                setAum(el.value.replace(/\D/g, ''));
+              }}
               required
-              placeholder="例如 5000000"
+              placeholder="例如 5,000,000"
               className="w-full rounded-md border border-ink/15 bg-cream/40 px-3 py-2 font-v4-mono text-sm text-ink focus:border-ink/40 focus:outline-none"
             />
           </Field>

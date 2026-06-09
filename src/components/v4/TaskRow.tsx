@@ -13,14 +13,14 @@
 //   - 完成的任務「不」消失:父層只重新排序(沉到最後),由 done 樣式
 //     畫上刪除線。真正移除只在使用者按刪除時發生。
 // ============================================================
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Trash2, Check } from 'lucide-react';
+import { Trash2, Check, Users, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Task, TaskStatus, TaskPriority, Snapshot } from '@/lib/v4/types';
 import { cn, daysUntil } from '@/lib/v4/utils';
 import { patchTask, deleteTask, createTask } from '@/lib/v4/mutations';
-import { InlineText } from '@/components/v4/InlineEdit';
+import { InlineText, InlineTextarea } from '@/components/v4/InlineEdit';
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'todo', label: '待辦' },
@@ -43,6 +43,240 @@ const PRIORITY_PILL: Record<TaskPriority, string> = {
   low: 'border-ink/15 text-ink/45 bg-paper',
 };
 
+const CONTROL_BASE = 'rounded-sm border px-1.5 py-0.5 font-v4-mono text-[10px] outline-none transition';
+
+// 協作者多選 picker:按鈕顯示「協作 N」,點開是成員勾選清單。
+// exclude:主責人 id —— 不在協作者清單中重複出現。
+function ParticipantPicker({
+  profiles, value, exclude, disabled, onChange,
+}: {
+  profiles: { id: string; full_name?: string | null; email: string }[];
+  value: string[];
+  exclude?: string | null;
+  disabled?: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const selectable = profiles.filter((p) => p.id !== exclude);
+  const count = value.filter((id) => id !== exclude).length;
+
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        title="協作者(一起討論/開會,會收到行事曆邀請)"
+        className={cn(
+          CONTROL_BASE, 'inline-flex items-center gap-1 border-ink/15 bg-paper',
+          count > 0 ? 'text-ink/80' : 'text-ink/65',
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:border-ink/40',
+        )}
+      >
+        <Users className="h-3 w-3" strokeWidth={2} />
+        {count > 0 ? `協作 ${count}` : '協作者'}
+      </button>
+      {open && (
+        <div className="absolute left-0 z-30 mt-1 max-h-56 w-52 overflow-auto rounded-md border border-ink/15 bg-paper p-1 shadow-lg">
+          {selectable.length === 0 && (
+            <div className="px-2 py-1.5 text-[11px] text-ink/45">沒有其他成員可加入</div>
+          )}
+          {selectable.map((p) => (
+            <label
+              key={p.id}
+              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[11px] text-ink/75 hover:bg-ink/5"
+            >
+              <input
+                type="checkbox"
+                checked={value.includes(p.id)}
+                onChange={() => toggle(p.id)}
+                className="accent-cobalt"
+              />
+              <span className="truncate">{p.full_name || p.email}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 時間下拉:時 + 分(每 10 分一格)。用 <select> 取代 native time input,
+// 解決兩件事:(1) 分鐘只出現 00/10/20/30/40/50;(2) 整個欄位都可點開(不必對準時鐘 icon)。
+// value / onChange 用 'HH:MM' 字串(或 null = 未設)。選時但未選分 → 預設 00 分。
+// minHour / maxHour 限制可選的小時(例如開始時間只給 8–19)。
+const MINUTE_OPTIONS = ['00', '10', '20', '30', '40', '50'];
+
+function TimeSelect({
+  value, onChange, disabled, selectClassName, title, minHour = 0, maxHour = 23,
+}: {
+  value: string | null;
+  onChange: (next: string | null) => void;
+  disabled?: boolean;
+  selectClassName?: string;
+  title?: string;
+  minHour?: number;
+  maxHour?: number;
+}) {
+  const hourOptions = Array.from(
+    { length: Math.max(0, maxHour - minHour + 1) },
+    (_, i) => String(minHour + i).padStart(2, '0'),
+  );
+  const hh = value ? value.slice(0, 2) : '';
+  const mmRaw = value ? value.slice(3, 5) : '';
+  // 既有資料若非 10 分整(例如舊的 :35),顯示退回 00,待使用者重選;不主動改 DB。
+  const mm = MINUTE_OPTIONS.includes(mmRaw) ? mmRaw : value ? '00' : '';
+
+  return (
+    <span className="inline-flex items-center gap-0.5" title={title}>
+      <select
+        disabled={disabled}
+        value={hh}
+        onChange={(e) => onChange(e.target.value ? `${e.target.value}:${mm || '00'}` : null)}
+        className={selectClassName}
+        aria-label="小時"
+      >
+        <option value="">時</option>
+        {hourOptions.map((h) => <option key={h} value={h}>{h}</option>)}
+      </select>
+      <span className="font-v4-mono text-[10px] text-ink/40">:</span>
+      <select
+        disabled={disabled || !hh}
+        value={mm}
+        onChange={(e) => onChange(`${hh || '00'}:${e.target.value || '00'}`)}
+        className={selectClassName}
+        aria-label="分鐘"
+      >
+        <option value="">分</option>
+        {MINUTE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+    </span>
+  );
+}
+
+// 建議開會時段:選了協作人就自動查與會者(主責人 + 協作者)的 Google
+// free/busy,從現在的下一個半天往後,列出最近 5 個大家都有空的時段(含日期)。
+// 點某個時段即把日期 + 開始/結束時間一次填入。
+const DURATION_OPTIONS = [30, 60, 90];
+
+// 'YYYY-MM-DD' → 今天 / 明天 / M/D(週X)
+function dateLabel(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return '今天';
+  if (diff === 1) return '明天';
+  const wd = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+  return `${d.getMonth() + 1}/${d.getDate()}(週${wd})`;
+}
+
+function FreeSlotSuggester({
+  attendeeIds, onPick,
+}: {
+  attendeeIds: string[];
+  onPick: (date: string, start: string, end: string) => void;
+}) {
+  const [duration, setDuration] = useState(60);
+  const [loading, setLoading] = useState(false);
+  const [slots, setSlots] = useState<{ date: string; start: string; end: string; offPeak?: boolean }[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const key = attendeeIds.join(',');
+  // 自動查:與會者或時長變動 → debounce 500ms 後查(避免每點一人就打一次 API)
+  useEffect(() => {
+    if (!attendeeIds.length) { setSlots([]); setMsg(null); setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true); setMsg(null);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/calendar/free-slots', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ attendeeIds, durationMin: duration }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) { setSlots([]); setMsg(json.error || '查詢失敗'); return; }
+        setSlots(json.slots ?? []);
+        setMsg(!json.slots?.length ? (json.note || '近期工作時段內找不到大家都有空的時段') : (json.note ?? null));
+      } catch {
+        if (!cancelled) { setSlots([]); setMsg('查詢失敗,請稍後再試'); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // attendeeIds 以 key(join 字串)代表,避免陣列每次 render 都換 identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, duration]);
+
+  if (!attendeeIds.length) return null;
+
+  return (
+    <div className="rounded-md border border-cobalt/20 bg-cobalt/5 p-2.5">
+      <div className="mb-2 flex items-center gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-cobalt" strokeWidth={2} />
+        <span className="text-xs font-semibold text-cobalt">建議開會時段</span>
+        <div className="ml-auto flex items-center gap-1">
+          {DURATION_OPTIONS.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setDuration(d)}
+              className={cn(
+                'rounded-sm border px-1.5 py-0.5 font-v4-mono text-[10px] transition',
+                d === duration ? 'border-cobalt/40 bg-cobalt/10 text-cobalt' : 'border-ink/15 text-ink/55 hover:border-ink/35',
+              )}
+            >
+              {d}分
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="px-1 py-1.5 text-[11px] text-ink/45">查詢同事行事曆中…</div>
+      ) : slots.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {slots.map((s, i) => (
+            <button
+              key={`${s.date}-${s.start}`}
+              type="button"
+              onClick={() => onPick(s.date, s.start, s.end)}
+              title="填入此日期與時間"
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition',
+                i === 0
+                  ? 'border-cobalt/50 bg-cobalt/10 font-semibold text-cobalt'
+                  : 'border-ink/15 bg-paper text-ink/70 hover:border-cobalt/40 hover:bg-cobalt/5',
+              )}
+            >
+              <span className="font-v4-mono">{dateLabel(s.date)} {s.start}–{s.end}</span>
+              {i === 0 && !s.offPeak && <span className="text-[9px] text-cobalt/80">最推薦</span>}
+              {s.offPeak && <span className="text-[9px] text-brass">次要時段</span>}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {msg && <div className="mt-1.5 px-1 text-[10.5px] text-ink/50">{msg}</div>}
+    </div>
+  );
+}
+
 export function TaskRow({
   task, snapshot, base, isFixtures, onLocalPatch, onLocalDelete,
 }: {
@@ -64,14 +298,22 @@ export function TaskRow({
   const [localStatus, setLocalStatus] = useState<TaskStatus>(task.status);
   const [localPriority, setLocalPriority] = useState<TaskPriority>(task.priority);
   const [localAssignee, setLocalAssignee] = useState<string | null>(task.assignee_id);
+  const [localParticipants, setLocalParticipants] = useState<string[]>(task.participant_ids ?? []);
   const [localDue, setLocalDue] = useState<string | null>(task.due_date);
+  const [localStart, setLocalStart] = useState<string | null>(task.start_time ?? null);
+  const [localEnd, setLocalEnd] = useState<string | null>(task.end_time ?? null);
   const [removed, setRemoved] = useState(false);
+  const [descOpen, setDescOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const hasDesc = !!task.description?.trim();
 
   useEffect(() => { setLocalStatus(task.status); }, [task.status]);
   useEffect(() => { setLocalPriority(task.priority); }, [task.priority]);
   useEffect(() => { setLocalAssignee(task.assignee_id); }, [task.assignee_id]);
+  useEffect(() => { setLocalParticipants(task.participant_ids ?? []); }, [task.participant_ids]);
   useEffect(() => { setLocalDue(task.due_date); }, [task.due_date]);
+  useEffect(() => { setLocalStart(task.start_time ?? null); }, [task.start_time]);
+  useEffect(() => { setLocalEnd(task.end_time ?? null); }, [task.end_time]);
 
   if (removed) return null;
 
@@ -130,6 +372,20 @@ export function TaskRow({
       });
   }
 
+  function changeParticipants(next: string[]) {
+    if (!guard()) return;
+    const prev = localParticipants;
+    setLocalParticipants(next);
+    onLocalPatch?.(task.id, { participant_ids: next });
+    setErr(null);
+    patchTask(task.id, { participant_ids: next })
+      .catch((e) => {
+        setLocalParticipants(prev);
+        onLocalPatch?.(task.id, { participant_ids: prev });
+        setErr((e as Error).message);
+      });
+  }
+
   function changeDue(next: string | null) {
     if (!guard()) return;
     const prev = localDue;
@@ -139,6 +395,32 @@ export function TaskRow({
     patchTask(task.id, { due_date: next }).catch((e) => {
       setLocalDue(prev);
       onLocalPatch?.(task.id, { due_date: prev });
+      setErr((e as Error).message);
+    });
+  }
+
+  function changeStart(next: string | null) {
+    if (!guard()) return;
+    const prev = localStart;
+    setLocalStart(next);
+    onLocalPatch?.(task.id, { start_time: next });
+    setErr(null);
+    patchTask(task.id, { start_time: next }).catch((e) => {
+      setLocalStart(prev);
+      onLocalPatch?.(task.id, { start_time: prev });
+      setErr((e as Error).message);
+    });
+  }
+
+  function changeEnd(next: string | null) {
+    if (!guard()) return;
+    const prev = localEnd;
+    setLocalEnd(next);
+    onLocalPatch?.(task.id, { end_time: next });
+    setErr(null);
+    patchTask(task.id, { end_time: next }).catch((e) => {
+      setLocalEnd(prev);
+      onLocalPatch?.(task.id, { end_time: prev });
       setErr((e as Error).message);
     });
   }
@@ -156,14 +438,25 @@ export function TaskRow({
       .catch((e) => { setRemoved(false); setErr((e as Error).message); });
   }
 
-  const controlBase = 'rounded-sm border px-1.5 py-0.5 font-v4-mono text-[10px] outline-none transition';
+  const controlBase = CONTROL_BASE;
 
   return (
-    <div className={cn(
-      'grid grid-cols-[24px_1fr_auto] items-start gap-3 rounded-md border border-ink/10 bg-paper px-4 py-3 transition',
-      done && 'opacity-60',
-      pending && 'opacity-70',
-    )}>
+    <div
+      // 點任務列「空白處」展開/收合說明;點到互動元件(標題、下拉、按鈕、輸入框、
+      // 連結)不觸發 —— 故標題仍是「點文字才編輯」。
+      onClick={(e) => {
+        if (locked) return;
+        if ((e.target as HTMLElement).closest('button, a, select, input, textarea, label')) return;
+        setDescOpen((o) => !o);
+      }}
+      title={descOpen ? '' : '點空白處展開任務說明'}
+      className={cn(
+        'grid grid-cols-[24px_1fr_auto] items-start gap-3 rounded-md border border-ink/10 bg-paper px-4 py-3 transition',
+        !locked && 'cursor-pointer hover:border-ink/20',
+        done && 'opacity-60',
+        pending && 'opacity-70',
+      )}
+    >
       <button
         type="button"
         onClick={toggleDone}
@@ -215,11 +508,21 @@ export function TaskRow({
             ))}
           </select>
 
+          {/* 協作者(多人;主責人 + 協作者都會成為行事曆與會者) */}
+          <ParticipantPicker
+            profiles={snapshot.profiles}
+            value={localParticipants}
+            exclude={localAssignee}
+            disabled={locked}
+            onChange={changeParticipants}
+          />
+
           {/* 到期日 */}
           <input
             type="date"
             value={localDue ?? ''}
             onChange={(e) => changeDue(e.target.value || null)}
+            onClick={(e) => { try { e.currentTarget.showPicker(); } catch { /* 不支援就維持原生行為 */ } }}
             disabled={locked}
             title="到期日"
             className={cn(
@@ -227,6 +530,38 @@ export function TaskRow({
               locked ? 'cursor-not-allowed' : 'cursor-pointer hover:border-ink/40',
             )}
           />
+
+          {/* 時間段(可選;不填則整天) */}
+          <TimeSelect
+            value={localStart}
+            onChange={changeStart}
+            disabled={locked || !localDue}
+            minHour={8}
+            maxHour={19}
+            title={localDue ? '開始時間 8:00–19:00(不填=整天工作)' : '先設到期日才能設時間'}
+            selectClassName={cn(
+              controlBase, 'border-ink/15 bg-paper text-ink/65',
+              locked || !localDue ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-ink/40',
+            )}
+          />
+          {localStart && (
+            <>
+              <span className="font-v4-mono text-[10px] text-ink/40">~</span>
+              <TimeSelect
+                value={localEnd}
+                onChange={changeEnd}
+                disabled={locked || !localDue}
+                minHour={8}
+                maxHour={20}
+                title="結束時間(不填=開始 +1 小時)"
+                selectClassName={cn(
+                  controlBase, 'border-ink/15 bg-paper text-ink/65',
+                  locked || !localDue ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-ink/40',
+                )}
+              />
+            </>
+          )}
+
           {localDue && !done && (
             <span className={cn('font-v4-mono text-[10px] numeric', dueTone)}>{dueLabel}</span>
           )}
@@ -258,7 +593,37 @@ export function TaskRow({
           >
             {PRIORITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+
+          {/* 展開填寫任務說明 / 細項 */}
+          <button
+            type="button"
+            onClick={() => setDescOpen((o) => !o)}
+            title="任務說明 / 細項"
+            className={cn(
+              controlBase, 'inline-flex items-center gap-0.5 border-ink/15 bg-paper cursor-pointer hover:border-ink/40',
+              hasDesc ? 'text-cobalt' : 'text-ink/55',
+            )}
+          >
+            {descOpen ? <ChevronDown className="h-3 w-3" strokeWidth={2} /> : <ChevronRight className="h-3 w-3" strokeWidth={2} />}
+            說明{hasDesc && !descOpen ? ' •' : ''}
+          </button>
         </div>
+
+        {descOpen && (
+          <div className="mt-1 rounded-md border border-ink/10 bg-cream/30 p-2" onClick={(e) => e.stopPropagation()}>
+            <InlineTextarea
+              value={task.description || null}
+              onSave={async (next) => {
+                onLocalPatch?.(task.id, { description: next ?? '' });
+                await patchTask(task.id, { description: next ?? '' });
+              }}
+              isFixtures={locked}
+              placeholder="任務說明 / 細項(點此編輯)"
+              rows={3}
+            />
+          </div>
+        )}
+
         {err && <div className="text-[11px] text-claret">{err}</div>}
       </div>
 
@@ -294,9 +659,13 @@ export function TaskComposer({
 }) {
   void base;
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [dealId, setDealId] = useState(defaultDealId ?? '');
   const [assigneeId, setAssigneeId] = useState('');
+  const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -306,26 +675,35 @@ export function TaskComposer({
     if (isFixtures) { setErr('fixtures 模式無法寫入'); return; }
 
     const titleVal = title.trim();
+    const descVal = description.trim();
     const dueVal = dueDate || null;
+    // 時間只有在有到期日時才有意義;沒結束時間就交給後端預設 +1 小時
+    const startVal = dueVal ? (startTime || null) : null;
+    const endVal = startVal ? (endTime || null) : null;
     const priVal = priority;
     const linkedDeal = dealId || null;
     const assignee = assigneeId || null;
+    // 主責人不重複列入協作者
+    const participants = participantIds.filter((id) => id !== assignee);
 
     // 樂觀:立刻給父層一筆 tmp 任務 + 收起 composer
     const tmpTask: Task = {
       id: `tmp-${Date.now()}`,
       deal_id: linkedDeal,
       title: titleVal,
-      description: '',
+      description: descVal,
       assignee_id: assignee,
+      participant_ids: participants,
       due_date: dueVal,
+      start_time: startVal,
+      end_time: endVal,
       status: 'todo',
       priority: priVal,
       created_at: new Date().toISOString(),
       completed_at: null,
     };
     onCreated?.(tmpTask);
-    setTitle(''); setAssigneeId(''); setDueDate(''); setPriority('normal'); setExpanded(false);
+    setTitle(''); setDescription(''); setAssigneeId(''); setParticipantIds([]); setDueDate(''); setStartTime(''); setEndTime(''); setPriority('normal'); setExpanded(false);
     setErr(null);
 
     // DB 寫入背景跑;成功就把 tmp id 換成真 id(後續 toggle/delete 才打得到 row),
@@ -333,8 +711,12 @@ export function TaskComposer({
     createTask({
       deal_id: linkedDeal,
       title: titleVal,
+      description: descVal || undefined,
       assignee_id: assignee,
+      participant_ids: participants,
       due_date: dueVal,
+      start_time: startVal,
+      end_time: endVal,
       priority: priVal,
       status: 'todo',
     })
@@ -371,8 +753,20 @@ export function TaskComposer({
         onChange={(e) => setTitle(e.target.value)}
         autoFocus
         placeholder="任務標題,例如「準備配偶同席的一頁 EB 摘要」"
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') setExpanded(false); }}
+        onKeyDown={(e) => {
+          // 輸入法組字中(打中文按 Enter 確認選字)不可當成送出,否則中文還沒打完就被新增
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
+          if (e.key === 'Escape') setExpanded(false);
+        }}
         className="w-full rounded-md border border-ink/12 bg-cream/40 px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none"
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        rows={2}
+        placeholder="任務說明 / 細項(可選)"
+        onKeyDown={(e) => { if (e.key === 'Escape') setExpanded(false); }}
+        className="w-full resize-vertical rounded-md border border-ink/12 bg-cream/40 px-3 py-2 text-sm leading-6 text-ink focus:border-ink/30 focus:outline-none"
       />
       <div className="flex flex-wrap items-center gap-2">
         {!defaultDealId && (
@@ -398,12 +792,41 @@ export function TaskComposer({
             <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
           ))}
         </select>
+        <ParticipantPicker
+          profiles={snapshot.profiles}
+          value={participantIds}
+          exclude={assigneeId || null}
+          onChange={setParticipantIds}
+        />
         <input
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
+          onClick={(e) => { try { e.currentTarget.showPicker(); } catch { /* 不支援就維持原生行為 */ } }}
           className={cn(fieldCls, 'font-v4-mono')}
         />
+        <TimeSelect
+          value={startTime || null}
+          onChange={(v) => setStartTime(v ?? '')}
+          disabled={!dueDate}
+          minHour={8}
+          maxHour={19}
+          title={dueDate ? '開始時間 8:00–19:00(不填=整天工作)' : '先設到期日才能設時間'}
+          selectClassName={cn(fieldCls, 'font-v4-mono', !dueDate && 'cursor-not-allowed opacity-50')}
+        />
+        {startTime && (
+          <>
+            <span className="font-v4-mono text-[10px] text-ink/40">~</span>
+            <TimeSelect
+              value={endTime || null}
+              onChange={(v) => setEndTime(v ?? '')}
+              minHour={8}
+              maxHour={20}
+              title="結束時間(不填=開始 +1 小時)"
+              selectClassName={cn(fieldCls, 'font-v4-mono')}
+            />
+          </>
+        )}
         <select
           value={priority}
           onChange={(e) => setPriority(e.target.value as TaskPriority)}
@@ -415,7 +838,7 @@ export function TaskComposer({
           <option value="low">低</option>
         </select>
         <div className="ml-auto flex items-center gap-1.5">
-          <button type="button" onClick={() => setExpanded(false)} className="rounded-md px-2 py-1.5 text-xs text-ink/55 hover:text-ink">取消</button>
+          <button type="button" onClick={() => setExpanded(false)} className="rounded-md border border-ink/15 bg-paper px-3 py-1.5 text-xs text-ink/70 hover:border-ink/30 hover:text-ink">取消</button>
           <button
             type="button"
             onClick={submit}
@@ -427,6 +850,11 @@ export function TaskComposer({
           </button>
         </div>
       </div>
+      {/* 有選協作人(代表要開會)才自動推薦大家都有空的日期+時段;點一下填入到期日與時間 */}
+      <FreeSlotSuggester
+        attendeeIds={participantIds.length ? [assigneeId, ...participantIds].filter(Boolean) : []}
+        onPick={(date, start, end) => { setDueDate(date); setStartTime(start); setEndTime(end); }}
+      />
       {err && <div className="text-[11px] text-claret">{err}</div>}
       <div className="font-v4-mono text-[10.5px] text-ink/45">Enter 新增 · Esc 取消</div>
     </div>

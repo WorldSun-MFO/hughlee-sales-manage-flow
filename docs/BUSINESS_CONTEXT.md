@@ -2,9 +2,9 @@
 
 本檔案是 WORLDSUN MEDDIC Pipeline 的業務脈絡層文件,提供 Claude Code 在做業務判斷時的單一參考來源(single source of truth)。
 
-**與 CLAUDE.md 的分工:**
+**與 README.md 的分工:**
 
-- CLAUDE.md(repo 根目錄)= 工程層,描述 codebase 怎麼運作
+- README.md(repo 根目錄)= 工程層,描述 codebase 怎麼運作、部署與維運
 - docs/BUSINESS_CONTEXT.md(本檔)= 業務層,描述商業邏輯、銷售方法論、為什麼某個欄位這樣設計
 
 **何時讀本檔:**
@@ -503,4 +503,4 @@ PLAYBOOK_KNOWLEDGE 系統 prompt 包含:
 
 - 本檔由 Hugh 主導維護,業務邏輯變更時優先更新本檔再修 code
 - 重大變更(如 Playbook 升級為 v2.2)應同步更新本檔頂部版本號
-- 與 CLAUDE.md 的工程層描述若有矛盾,以本檔為準(因業務優先於實作)
+- 與 README.md 的工程層描述若有矛盾,以本檔為準(因業務優先於實作)

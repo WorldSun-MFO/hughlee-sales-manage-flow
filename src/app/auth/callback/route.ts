@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { storeRefreshToken } from '@/lib/google/calendar';
 
 // 出錯時不再 silent 彈回 /login(那會造成不透明的無限循環)。
 // 改為:成功 → 照舊導向 next;失敗 → 顯示一頁「真實原因 + 中文指引」,
@@ -119,8 +120,30 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-  if (!error) return NextResponse.redirect(`${origin}${next}`);
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  if (!error) {
+    // 攔下 Google 的 refresh token,加密存起來供後續行事曆同步用。
+    // Supabase 只在登入當下回傳一次 provider_refresh_token,之後不會再給;
+    // 非致命:存失敗只記 log,絕不擋登入。
+    try {
+      const session = data.session;
+      // 診斷用:確認 Supabase 這次到底有沒有把 Google 的 token 回傳給我們。
+      // 不印 token 本身(機密),只印「有沒有」。排查完可移除。
+      console.log('[auth/callback] token 診斷:', {
+        hasSession: !!session,
+        userId: session?.user?.id ?? null,
+        hasProviderToken: !!session?.provider_token,
+        hasProviderRefreshToken: !!session?.provider_refresh_token,
+      });
+      if (session?.provider_refresh_token && session.user?.id) {
+        await storeRefreshToken(session.user.id, session.provider_refresh_token);
+        console.log('[auth/callback] refresh token 已存入 google_credentials');
+      }
+    } catch (e) {
+      console.error('[auth/callback] 存 Google refresh token 失敗(不影響登入):', e);
+    }
+    return NextResponse.redirect(`${origin}${next}`);
+  }
 
   const msg = error.message || '';
   const status = (error as unknown as { status?: number }).status;

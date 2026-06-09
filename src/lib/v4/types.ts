@@ -130,11 +130,22 @@ export interface Task {
   title: string;
   description: string;
   assignee_id: string | null;
+  // 協作者(migration 27)。主責人之外、一起討論/開會的人;行事曆同步時
+  // 與主責人一起設為事件與會者。DB 一律回陣列;型別選填以相容既有 fixtures。
+  participant_ids?: string[];
   due_date: string | null;
+  // 時間段(migration 28)。當天開始/結束時刻('HH:MM:SS');null = 整天事件。
+  start_time?: string | null;
+  end_time?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   created_at: string;
   completed_at: string | null;
+  // Google 行事曆同步(migration 26)。舊 row / 未同步者為 null。
+  google_event_id?: string | null;
+  google_event_owner?: string | null;
+  google_synced_at?: string | null;
+  google_sync_error?: string | null;
 }
 
 export interface Team {
