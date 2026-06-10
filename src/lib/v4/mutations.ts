@@ -178,6 +178,9 @@ function syncCalendar(
 // 後續點完成 / 改優先級 / 刪除才打得中資料
 export async function createTask(input: TaskInsert): Promise<string> {
   const supabase = createClient();
+  // created_by 必填:tasks 的 RLS(select/update/delete)都依賴它 —— 漏掉的話
+  // 無 deal 的個人任務建立者刪不掉、指派給別人時 insert 後的 .select() 會被擋。
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase.from('tasks').insert({
     deal_id: input.deal_id,
     title: input.title,
@@ -189,6 +192,7 @@ export async function createTask(input: TaskInsert): Promise<string> {
     end_time: input.end_time ?? null,
     priority: input.priority ?? 'normal',
     status: input.status ?? 'todo',
+    created_by: user?.id ?? null,
   }).select('id').single();
   if (error) throw error;
   const id = (data as { id: string }).id;
