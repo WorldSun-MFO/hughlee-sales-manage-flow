@@ -447,7 +447,10 @@ export async function setLastContactAt(dealId: string, iso: string | null): Prom
 }
 
 // 把 intel 直接關聯到 deal(供 client_talking_points 採納用)
-// upsert intel_deal_links;RLS:can_access_deal + intel 可讀
+// ⚠️ intel_deal_links 只有 select/insert/delete 三條 RLS policy、沒有 UPDATE
+//   (migration_12),upsert 撞到既有連結會走 ON CONFLICT DO UPDATE → 被 RLS
+//   擋下(42501)。改用 ignoreDuplicates(DO NOTHING):已連結過就保留原紀錄,
+//   與 market/tags.ts 註明的同一個坑的處理方式一致。
 export async function linkIntelToDeal(
   intelId: string,
   dealId: string,
@@ -462,6 +465,6 @@ export async function linkIntelToDeal(
       deal_id: dealId,
       relevance_reason: reason,
       linked_by: user?.id ?? null,
-    }, { onConflict: 'intel_id,deal_id', ignoreDuplicates: false });
+    }, { onConflict: 'intel_id,deal_id', ignoreDuplicates: true });
   if (error) throw error;
 }
