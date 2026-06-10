@@ -34,8 +34,11 @@ export async function createClient() {
         setAll(cookiesToSet: CookieToSet[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
-          } catch {
-            // Called from Server Component — can be ignored when middleware refreshes
+          } catch (e) {
+            // Server Component 呼叫時會 throw,可忽略(middleware 會補刷新)。
+            // 但 Route Handler(如 /auth/callback)寫失敗 = session cookie 沒送出去
+            // = 登入白做 —— 一定要留下 log,否則完全無聲、無從排查。
+            console.error('[supabase/server] setAll 寫 cookie 失敗(若發生在 auth callback 會導致登入不生效):', e);
           }
         },
       },

@@ -96,12 +96,14 @@ export async function patchScores(dealId: string, patch: ScorePatch): Promise<vo
 }
 
 // ---------- 單一 MEDDIC 欄位的文字理由(score_notes 子表)----------
+// 注意:score_notes 沒有 note 欄位,只有 evidence / next_action(見 schema.sql)。
+// v4 的單一備註框對應 evidence,與 legacy Dashboard 的「證據」欄共用同一份資料。
 export async function setScoreNote(dealId: string, field: ScoreField, note: string): Promise<void> {
   const supabase = createClient();
   // 複合主鍵 (deal_id, field),upsert 避免衝突
   const { error } = await supabase
     .from('score_notes')
-    .upsert({ deal_id: dealId, field, note }, { onConflict: 'deal_id,field' });
+    .upsert({ deal_id: dealId, field, evidence: note }, { onConflict: 'deal_id,field' });
   if (error) throw error;
 }
 
@@ -176,6 +178,9 @@ function syncCalendar(
 // 後續點完成 / 改優先級 / 刪除才打得中資料
 export async function createTask(input: TaskInsert): Promise<string> {
   const supabase = createClient();
+  // created_by 必填:tasks 的 RLS(select/update/delete)都依賴它 —— 漏掉的話
+  // 無 deal 的個人任務建立者刪不掉、指派給別人時 insert 後的 .select() 會被擋。
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase.from('tasks').insert({
     deal_id: input.deal_id,
     title: input.title,
@@ -187,6 +192,7 @@ export async function createTask(input: TaskInsert): Promise<string> {
     end_time: input.end_time ?? null,
     priority: input.priority ?? 'normal',
     status: input.status ?? 'todo',
+    created_by: user?.id ?? null,
   }).select('id').single();
   if (error) throw error;
   const id = (data as { id: string }).id;
@@ -441,7 +447,10 @@ export async function setLastContactAt(dealId: string, iso: string | null): Prom
 }
 
 // 把 intel 直接關聯到 deal(供 client_talking_points 採納用)
-// upsert intel_deal_links;RLS:can_access_deal + intel 可讀
+// ⚠️ intel_deal_links 只有 select/insert/delete 三條 RLS policy、沒有 UPDATE
+//   (migration_12),upsert 撞到既有連結會走 ON CONFLICT DO UPDATE → 被 RLS
+//   擋下(42501)。改用 ignoreDuplicates(DO NOTHING):已連結過就保留原紀錄,
+//   與 market/tags.ts 註明的同一個坑的處理方式一致。
 export async function linkIntelToDeal(
   intelId: string,
   dealId: string,
@@ -456,6 +465,6 @@ export async function linkIntelToDeal(
       deal_id: dealId,
       relevance_reason: reason,
       linked_by: user?.id ?? null,
-    }, { onConflict: 'intel_id,deal_id', ignoreDuplicates: false });
+    }, { onConflict: 'intel_id,deal_id', ignoreDuplicates: true });
   if (error) throw error;
 }
