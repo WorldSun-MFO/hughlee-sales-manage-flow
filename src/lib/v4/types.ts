@@ -36,7 +36,8 @@ export type ScoreField = 'm' | 'e' | 'd1' | 'd2' | 'p' | 'i' | 'c1' | 'c2';
 export interface ScoreNote {
   deal_id: string;
   field: ScoreField;
-  note: string;
+  evidence: string;       // schema 的「證據」欄;v4 的單一備註框存這裡(與 legacy Dashboard 共用)
+  next_action?: string;   // legacy Dashboard 的「下一步」欄;v4 不編輯但保留型別
   updated_at?: string;
 }
 

@@ -92,7 +92,7 @@ export function ScoresClient({
               </div>
               <ScoreNoteEditor
                 dealId={dealId} field={k}
-                initialNote={noteRow?.note ?? ''}
+                initialNote={noteRow?.evidence ?? ''}
                 isFixtures={isFixtures}
                 onSaved={refresh}
               />
@@ -196,14 +196,19 @@ function ScoreNoteEditor({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initialNote);
+  // 顯示用的本地 state:onSaved 是 noop(不 router.refresh),若直接渲染
+  // initialNote prop,存檔成功後畫面會退回舊內容、看起來像存檔失敗。
+  const [saved, setSaved] = useState(initialNote);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setSaved(initialNote); setDraft(initialNote); }, [initialNote]);
 
   async function save() {
-    if (draft.trim() === initialNote.trim()) { setEditing(false); return; }
+    const next = draft.trim();
+    if (next === saved.trim()) { setEditing(false); return; }
     if (isFixtures) { setErr('fixtures 模式無法寫入'); return; }
     setBusy(true); setErr(null);
-    try { await setScoreNote(dealId, field, draft.trim()); setEditing(false); onSaved(); }
+    try { await setScoreNote(dealId, field, next); setSaved(next); setEditing(false); onSaved(); }
     catch (e) { setErr((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -220,8 +225,8 @@ function ScoreNoteEditor({
           isFixtures && 'cursor-not-allowed',
         )}
       >
-        {initialNote ? (
-          <span className="text-[12px] leading-5 text-ink/65 whitespace-pre-wrap">{initialNote}</span>
+        {saved ? (
+          <span className="text-[12px] leading-5 text-ink/65 whitespace-pre-wrap">{saved}</span>
         ) : (
           !isFixtures && <span className="font-v4-mono text-[10px] font-semibold text-ink/35 opacity-0 transition group-hover:opacity-100">+ 加備註</span>
         )}
@@ -235,7 +240,7 @@ function ScoreNoteEditor({
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); save(); }
-          if (e.key === 'Escape') { setDraft(initialNote); setEditing(false); }
+          if (e.key === 'Escape') { setDraft(saved); setEditing(false); }
         }}
         rows={2}
         autoFocus
@@ -244,7 +249,7 @@ function ScoreNoteEditor({
         className="w-full resize-vertical rounded-sm border border-ink/25 bg-cream/40 px-2 py-1 text-xs leading-5 text-ink focus:border-ink/45 focus:outline-none"
       />
       <div className="flex items-center justify-end gap-2">
-        <button type="button" onClick={() => { setDraft(initialNote); setEditing(false); }} disabled={busy} className="text-[11px] text-ink/55 hover:text-ink">取消</button>
+        <button type="button" onClick={() => { setDraft(saved); setEditing(false); }} disabled={busy} className="text-[11px] text-ink/55 hover:text-ink">取消</button>
         <button type="button" onClick={save} disabled={busy} className="inline-flex items-center gap-1 rounded-sm bg-ink px-2 py-0.5 text-[11px] font-semibold text-paper hover:bg-graphite disabled:bg-ink/30">
           {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2} /> : null}
           儲存

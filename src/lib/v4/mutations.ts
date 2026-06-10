@@ -96,12 +96,14 @@ export async function patchScores(dealId: string, patch: ScorePatch): Promise<vo
 }
 
 // ---------- 單一 MEDDIC 欄位的文字理由(score_notes 子表)----------
+// 注意:score_notes 沒有 note 欄位,只有 evidence / next_action(見 schema.sql)。
+// v4 的單一備註框對應 evidence,與 legacy Dashboard 的「證據」欄共用同一份資料。
 export async function setScoreNote(dealId: string, field: ScoreField, note: string): Promise<void> {
   const supabase = createClient();
   // 複合主鍵 (deal_id, field),upsert 避免衝突
   const { error } = await supabase
     .from('score_notes')
-    .upsert({ deal_id: dealId, field, note }, { onConflict: 'deal_id,field' });
+    .upsert({ deal_id: dealId, field, evidence: note }, { onConflict: 'deal_id,field' });
   if (error) throw error;
 }
 
