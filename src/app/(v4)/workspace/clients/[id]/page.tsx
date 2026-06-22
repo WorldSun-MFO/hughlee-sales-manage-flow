@@ -7,7 +7,7 @@
 //   - 任一 section 慢都不會擋 header 顯示,使用者可以馬上互動
 //
 // 區塊由上到下:
-//   Header / Alerts / Stats / NextStep / Tasks / LastContact
+//   Header / Alerts / Stats / TaskBoard / NextStep / Tasks / LastContact
 //   / SavedPlan / Checklist / DealAmmo / PainMatrix
 //   / Attachments / Comments / DeleteDealButton
 // ============================================================
@@ -25,6 +25,7 @@ import { SavedPlanSection } from '@/components/v4/sections/SavedPlanSection';
 import { ChecklistSection } from '@/components/v4/sections/ChecklistSection';
 import { PainMatrixSection } from '@/components/v4/sections/PainMatrixSection';
 import { CommentsSection } from '@/components/v4/sections/CommentsSection';
+import { TaskBoardSection } from '@/components/v4/sections/TaskBoardSection';
 import { TasksSection } from '@/components/v4/sections/TasksSection';
 import { AttachmentsSection } from '@/components/v4/sections/AttachmentsSection';
 import { DealAmmoSection } from '@/components/v4/DealAmmoSection';
@@ -66,6 +67,11 @@ export default async function WorkspaceClientDetailPage(
       <HeaderClient deal={deal} isFixtures={isFixtures} profile={profile} profiles={profilesTeams.profiles} />
       <AlertsRow deal={deal} tierConfig={tierConfig} />
       <StatsRow deal={deal} />
+
+      <Suspense fallback={null}>
+        <TaskBoardSection dealId={id} />
+      </Suspense>
+
       <NextStepClient deal={deal} isFixtures={isFixtures} />
 
       <Suspense fallback={<TasksSkeleton />}>

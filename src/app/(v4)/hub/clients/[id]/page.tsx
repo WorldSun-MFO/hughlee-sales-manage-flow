@@ -14,6 +14,7 @@ import { SavedPlanSection } from '@/components/v4/sections/SavedPlanSection';
 import { ChecklistSection } from '@/components/v4/sections/ChecklistSection';
 import { PainMatrixSection } from '@/components/v4/sections/PainMatrixSection';
 import { CommentsSection } from '@/components/v4/sections/CommentsSection';
+import { TaskBoardSection } from '@/components/v4/sections/TaskBoardSection';
 import { TasksSection } from '@/components/v4/sections/TasksSection';
 import { AttachmentsSection } from '@/components/v4/sections/AttachmentsSection';
 import { DealAmmoSection } from '@/components/v4/DealAmmoSection';
@@ -61,6 +62,11 @@ export default async function HubClientDetailPage(
           <HeaderClient deal={deal} isFixtures={isFixtures} profile={profile} profiles={profilesTeams.profiles} />
           <AlertsRow deal={deal} tierConfig={tierConfig} />
           <StatsRow deal={deal} />
+
+          <Suspense fallback={null}>
+            <TaskBoardSection dealId={id} />
+          </Suspense>
+
           <NextStepClient deal={deal} isFixtures={isFixtures} />
 
           <Suspense fallback={<TasksSkeleton />}>
