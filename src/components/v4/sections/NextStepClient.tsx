@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Calendar, Loader2, ListTodo } from 'lucide-react';
 import type { Deal } from '@/lib/v4/types';
 import { InlineTextarea, InlineDate } from '@/components/v4/InlineEdit';
+import { PaymentBadge } from '@/components/v4/sections/PaymentBadge';
 import { createTask, patchDeal, splitNextStepIntoTasks } from '@/lib/v4/mutations';
 import { createClient } from '@/lib/supabase/client';
 
@@ -79,6 +80,8 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
           onSave={async (next) => { await patchDeal(deal.id, { target_close_date: next }); refresh(); }}
           isFixtures={isFixtures}
         />
+        {/* 已收款 / 未收款:只在有設目標成交日時顯示 */}
+        {deal.target_close_date && <PaymentBadge received={!!deal.payment_received} />}
       </div>
     </section>
   );

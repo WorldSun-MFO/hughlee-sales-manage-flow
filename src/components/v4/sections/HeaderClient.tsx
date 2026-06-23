@@ -7,6 +7,7 @@ import type { Deal, Profile, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { TIER_STYLES } from '@/lib/v4/utils';
 import { InlineText, InlineSelect } from '@/components/v4/InlineEdit';
+import { PaymentBadge } from '@/components/v4/sections/PaymentBadge';
 import { patchDeal } from '@/lib/v4/mutations';
 
 const TIER_OPTIONS = [
@@ -83,20 +84,24 @@ export function HeaderClient({
           placeholder="(未填產品)"
           displayClassName="font-v4-mono text-sm text-ink"
         />
-        {canPickRm ? (
-          <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
-            RM ·
-            <InlineSelect<string>
-              value={deal.rm_id}
-              options={assignable.map((p) => ({ value: p.id, label: p.full_name || p.email }))}
-              onSave={async (next) => { if (next) { await patchDeal(deal.id, { rm_id: next }); refresh(); } }}
-              isFixtures={isFixtures}
-              renderDisplay={(v) => <span className="font-semibold text-ink/70">{nameOf(v)}</span>}
-            />
-          </span>
-        ) : (
-          <span className="font-v4-mono text-xs text-ink/45">RM · {deal.rm?.full_name ?? '—'}</span>
-        )}
+        <div className="inline-flex flex-wrap items-center gap-2">
+          {canPickRm ? (
+            <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
+              RM ·
+              <InlineSelect<string>
+                value={deal.rm_id}
+                options={assignable.map((p) => ({ value: p.id, label: p.full_name || p.email }))}
+                onSave={async (next) => { if (next) { await patchDeal(deal.id, { rm_id: next }); refresh(); } }}
+                isFixtures={isFixtures}
+                renderDisplay={(v) => <span className="font-semibold text-ink/70">{nameOf(v)}</span>}
+              />
+            </span>
+          ) : (
+            <span className="font-v4-mono text-xs text-ink/45">RM · {deal.rm?.full_name ?? '—'}</span>
+          )}
+          {/* 已收款 / 未收款:只在有設目標成交日時顯示 */}
+          {deal.target_close_date && <PaymentBadge received={!!deal.payment_received} />}
+        </div>
       </div>
     </header>
   );
