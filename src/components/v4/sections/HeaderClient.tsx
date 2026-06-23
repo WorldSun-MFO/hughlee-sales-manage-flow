@@ -106,7 +106,7 @@ export function HeaderClient({
 
         {/* 目標成交(移到 RM 右邊) */}
         <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
-          目標成交 ·
+          <span className="whitespace-nowrap">目標成交 ·</span>
           <InlineDate
             value={deal.target_close_date}
             onSave={async (next) => { await patchDeal(deal.id, { target_close_date: next }); refresh(); }}
@@ -116,7 +116,7 @@ export function HeaderClient({
 
         {/* 預計收款日 */}
         <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
-          預計收款 ·
+          <span className="whitespace-nowrap">預計收款 ·</span>
           <InlineDate
             value={deal.expected_payment_date ?? null}
             onSave={async (next) => { await patchDeal(deal.id, { expected_payment_date: next }); refresh(); }}
