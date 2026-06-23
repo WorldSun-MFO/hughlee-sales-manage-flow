@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import type { Deal, Profile, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { TIER_STYLES } from '@/lib/v4/utils';
-import { InlineText, InlineSelect } from '@/components/v4/InlineEdit';
+import { InlineText, InlineSelect, InlineDate } from '@/components/v4/InlineEdit';
+import { PaymentToggle } from '@/components/v4/sections/PaymentBadge';
 import { patchDeal } from '@/lib/v4/mutations';
 
 const TIER_OPTIONS = [
@@ -74,15 +75,20 @@ export function HeaderClient({
         displayClassName="font-v4-serif text-[44px] font-medium leading-[1.05] tracking-tight text-ink lg:text-[56px]"
       />
 
-      <div className="grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-1 font-v4-mono text-sm text-ink/55 lg:grid-cols-[auto_auto_1fr] lg:gap-x-6">
-        <span className="label-caps text-ink/45 self-center">產品</span>
-        <InlineText
-          value={deal.product ?? ''}
-          onSave={async (next) => { await patchDeal(deal.id, { product: next || null }); refresh(); }}
-          isFixtures={isFixtures}
-          placeholder="(未填產品)"
-          displayClassName="font-v4-mono text-sm text-ink"
-        />
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-v4-mono text-sm text-ink/55">
+        {/* 產品 */}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="label-caps text-ink/45">產品</span>
+          <InlineText
+            value={deal.product ?? ''}
+            onSave={async (next) => { await patchDeal(deal.id, { product: next || null }); refresh(); }}
+            isFixtures={isFixtures}
+            placeholder="(未填產品)"
+            displayClassName="font-v4-mono text-sm text-ink"
+          />
+        </span>
+
+        {/* RM */}
         {canPickRm ? (
           <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
             RM ·
@@ -96,6 +102,31 @@ export function HeaderClient({
           </span>
         ) : (
           <span className="font-v4-mono text-xs text-ink/45">RM · {deal.rm?.full_name ?? '—'}</span>
+        )}
+
+        {/* 目標成交(移到 RM 右邊) */}
+        <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
+          <span className="whitespace-nowrap">目標成交 ·</span>
+          <InlineDate
+            value={deal.target_close_date}
+            onSave={async (next) => { await patchDeal(deal.id, { target_close_date: next }); refresh(); }}
+            isFixtures={isFixtures}
+          />
+        </span>
+
+        {/* 預計收款日 */}
+        <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
+          <span className="whitespace-nowrap">預計收款 ·</span>
+          <InlineDate
+            value={deal.expected_payment_date ?? null}
+            onSave={async (next) => { await patchDeal(deal.id, { expected_payment_date: next }); refresh(); }}
+            isFixtures={isFixtures}
+          />
+        </span>
+
+        {/* 已收款 / 未收款(可切換):只在有設目標成交日時顯示 */}
+        {deal.target_close_date && (
+          <PaymentToggle dealId={deal.id} received={!!deal.payment_received} isFixtures={isFixtures} />
         )}
       </div>
     </header>

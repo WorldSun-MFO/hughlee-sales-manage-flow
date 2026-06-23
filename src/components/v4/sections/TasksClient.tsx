@@ -12,6 +12,14 @@ export function TasksClient({
   snapshotLite: Snapshot;
   isFixtures: boolean;
 }) {
+  // 沒設日期的任務排最上面;有日期的接在後面、由近到遠('YYYY-MM-DD' 字典序 = 時間序)
+  const ordered = [...tasks].sort((a, b) => {
+    if (!a.due_date && b.due_date) return -1;
+    if (a.due_date && !b.due_date) return 1;
+    if (!a.due_date && !b.due_date) return 0;
+    return a.due_date! < b.due_date! ? -1 : a.due_date! > b.due_date! ? 1 : 0;
+  });
+
   return (
     <section className="grid gap-3">
       <div className="flex items-baseline justify-between">
@@ -20,8 +28,14 @@ export function TasksClient({
       </div>
       {tasks.length > 0 ? (
         <ul className="grid gap-2">
-          {tasks.map((t) => (
-            <li key={t.id}>
+          {ordered.map((t) => (
+            // id + scroll-mt:上方「未來規劃 / 後續需要做」方塊用 #task-<id> 連到這裡;
+            // [&:target] 在被連到時高亮 1 圈,讓使用者一眼看到是哪一筆。
+            <li
+              key={t.id}
+              id={`task-${t.id}`}
+              className="scroll-mt-24 rounded-md transition [&:target]:ring-2 [&:target]:ring-cobalt/50 [&:target]:ring-offset-2 [&:target]:ring-offset-cream"
+            >
               <TaskRow task={t} snapshot={snapshotLite} base={base} isFixtures={isFixtures} />
             </li>
           ))}

@@ -9,12 +9,12 @@ import { ClientDetailShell } from '@/components/v4/sections/Shell';
 import { HeaderClient } from '@/components/v4/sections/HeaderClient';
 import { NextStepClient } from '@/components/v4/sections/NextStepClient';
 import { StatsRow, AlertsRow } from '@/components/v4/sections/StatsRow';
-import { StagePromptSection } from '@/components/v4/sections/StagePromptSection';
 import { LastContactSection } from '@/components/v4/sections/LastContactSection';
 import { SavedPlanSection } from '@/components/v4/sections/SavedPlanSection';
 import { ChecklistSection } from '@/components/v4/sections/ChecklistSection';
 import { PainMatrixSection } from '@/components/v4/sections/PainMatrixSection';
 import { CommentsSection } from '@/components/v4/sections/CommentsSection';
+import { TaskBoardSection } from '@/components/v4/sections/TaskBoardSection';
 import { TasksSection } from '@/components/v4/sections/TasksSection';
 import { AttachmentsSection } from '@/components/v4/sections/AttachmentsSection';
 import { DealAmmoSection } from '@/components/v4/DealAmmoSection';
@@ -62,8 +62,17 @@ export default async function HubClientDetailPage(
           <HeaderClient deal={deal} isFixtures={isFixtures} profile={profile} profiles={profilesTeams.profiles} />
           <AlertsRow deal={deal} tierConfig={tierConfig} />
           <StatsRow deal={deal} />
-          <StagePromptSection stage={deal.stage} />
+
+          <Suspense fallback={null}>
+            <TaskBoardSection dealId={id} />
+          </Suspense>
+
           <NextStepClient deal={deal} isFixtures={isFixtures} />
+
+          <Suspense fallback={<TasksSkeleton />}>
+            <TasksSection dealId={id} base="/hub" isFixtures={isFixtures} />
+          </Suspense>
+
           <LastContactSection deal={deal} tierConfig={tierConfig} isFixtures={isFixtures} />
 
           <Suspense fallback={null}>
@@ -73,8 +82,6 @@ export default async function HubClientDetailPage(
           <Suspense fallback={<ChecklistSkeleton />}>
             <ChecklistSection dealId={id} stage={deal.stage} isFixtures={isFixtures} />
           </Suspense>
-
-          {/* MEDDPICC 評分 + 實戰題庫已移至「今日 → MEDDPICC」tab */}
 
           <Suspense fallback={<AmmoSkeleton />}>
             <DealAmmoSection dealId={id} isFixtures={isFixtures} />
@@ -90,10 +97,6 @@ export default async function HubClientDetailPage(
 
           <Suspense fallback={<CommentsSkeleton />}>
             <CommentsSection dealId={id} isFixtures={isFixtures} />
-          </Suspense>
-
-          <Suspense fallback={<TasksSkeleton />}>
-            <TasksSection dealId={id} base="/hub" isFixtures={isFixtures} />
           </Suspense>
 
           <DeleteDealButton dealId={id} dealName={deal.name} base="/hub" isFixtures={isFixtures} />

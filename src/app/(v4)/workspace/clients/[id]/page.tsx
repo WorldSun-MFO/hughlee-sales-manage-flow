@@ -7,9 +7,9 @@
 //   - 任一 section 慢都不會擋 header 顯示,使用者可以馬上互動
 //
 // 區塊由上到下:
-//   Header / Alerts / Stats / StagePrompt / NextStep / LastContact
-//   / SavedPlan / Checklist / Scores / Questions / DealAmmo / PainMatrix
-//   / Attachments / Comments / RawTranscript / Tasks / DeleteDealButton
+//   Header / Alerts / Stats / TaskBoard / NextStep / Tasks / LastContact
+//   / SavedPlan / Checklist / DealAmmo / PainMatrix
+//   / Attachments / Comments / DeleteDealButton
 // ============================================================
 import { Suspense } from 'react';
 import Link from 'next/link';
@@ -20,12 +20,12 @@ import { ClientDetailShell } from '@/components/v4/sections/Shell';
 import { HeaderClient } from '@/components/v4/sections/HeaderClient';
 import { NextStepClient } from '@/components/v4/sections/NextStepClient';
 import { StatsRow, AlertsRow } from '@/components/v4/sections/StatsRow';
-import { StagePromptSection } from '@/components/v4/sections/StagePromptSection';
 import { LastContactSection } from '@/components/v4/sections/LastContactSection';
 import { SavedPlanSection } from '@/components/v4/sections/SavedPlanSection';
 import { ChecklistSection } from '@/components/v4/sections/ChecklistSection';
 import { PainMatrixSection } from '@/components/v4/sections/PainMatrixSection';
 import { CommentsSection } from '@/components/v4/sections/CommentsSection';
+import { TaskBoardSection } from '@/components/v4/sections/TaskBoardSection';
 import { TasksSection } from '@/components/v4/sections/TasksSection';
 import { AttachmentsSection } from '@/components/v4/sections/AttachmentsSection';
 import { DealAmmoSection } from '@/components/v4/DealAmmoSection';
@@ -67,8 +67,17 @@ export default async function WorkspaceClientDetailPage(
       <HeaderClient deal={deal} isFixtures={isFixtures} profile={profile} profiles={profilesTeams.profiles} />
       <AlertsRow deal={deal} tierConfig={tierConfig} />
       <StatsRow deal={deal} />
-      <StagePromptSection stage={deal.stage} />
+
+      <Suspense fallback={null}>
+        <TaskBoardSection dealId={id} />
+      </Suspense>
+
       <NextStepClient deal={deal} isFixtures={isFixtures} />
+
+      <Suspense fallback={<TasksSkeleton />}>
+        <TasksSection dealId={id} base="/workspace" isFixtures={isFixtures} />
+      </Suspense>
+
       <LastContactSection deal={deal} tierConfig={tierConfig} isFixtures={isFixtures} />
 
       <Suspense fallback={null}>
@@ -78,8 +87,6 @@ export default async function WorkspaceClientDetailPage(
       <Suspense fallback={<ChecklistSkeleton />}>
         <ChecklistSection dealId={id} stage={deal.stage} isFixtures={isFixtures} />
       </Suspense>
-
-      {/* MEDDPICC 評分 + 實戰題庫已移至「今日 → MEDDPICC」tab */}
 
       <Suspense fallback={<AmmoSkeleton />}>
         <DealAmmoSection dealId={id} isFixtures={isFixtures} />
@@ -95,10 +102,6 @@ export default async function WorkspaceClientDetailPage(
 
       <Suspense fallback={<CommentsSkeleton />}>
         <CommentsSection dealId={id} isFixtures={isFixtures} />
-      </Suspense>
-
-      <Suspense fallback={<TasksSkeleton />}>
-        <TasksSection dealId={id} base="/workspace" isFixtures={isFixtures} />
       </Suspense>
 
       <DeleteDealButton dealId={id} dealName={deal.name} base="/workspace" isFixtures={isFixtures} />

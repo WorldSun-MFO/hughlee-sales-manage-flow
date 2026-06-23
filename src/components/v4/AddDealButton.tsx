@@ -47,6 +47,7 @@ export function AddDealButton({
   const [product, setProduct] = useState('');
   const [nextStep, setNextStep] = useState('');
   const [targetDate, setTargetDate] = useState('');
+  const [expectedPayment, setExpectedPayment] = useState('');
   const [rmId, setRmId] = useState(profile?.id ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -82,7 +83,7 @@ export function AddDealButton({
   const canPickRm = (role === 'admin' || role === 'team_lead') && assignable.length > 1;
 
   function reset() {
-    setName(''); setAum(''); setTier(''); setProduct(''); setNextStep(''); setTargetDate('');
+    setName(''); setAum(''); setTier(''); setProduct(''); setNextStep(''); setTargetDate(''); setExpectedPayment('');
     setRmId(profile?.id ?? ''); setErr(null);
   }
 
@@ -100,6 +101,7 @@ export function AddDealButton({
         product: product.trim() || null,
         next_step: nextStep.trim() || null,
         target_close_date: targetDate || null,
+        expected_payment_date: expectedPayment || null,
         rm_id: rmId || undefined,   // 未選/RM 角色 → undefined → createDeal fallback 當前使用者
       });
       reset();
@@ -222,6 +224,17 @@ export function AddDealButton({
               type="date"
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
+              onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch { /* 略過 */ } }}
+              className="rounded-md border border-ink/15 bg-cream/40 px-3 py-2 font-v4-mono text-sm text-ink focus:border-ink/40 focus:outline-none"
+            />
+          </Field>
+
+          <Field label="預計收款日" hint="可空">
+            <input
+              type="date"
+              value={expectedPayment}
+              onChange={(e) => setExpectedPayment(e.target.value)}
+              onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch { /* 略過 */ } }}
               className="rounded-md border border-ink/15 bg-cream/40 px-3 py-2 font-v4-mono text-sm text-ink focus:border-ink/40 focus:outline-none"
             />
           </Field>

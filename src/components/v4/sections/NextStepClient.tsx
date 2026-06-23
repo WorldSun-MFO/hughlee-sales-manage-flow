@@ -3,9 +3,9 @@
 // 下一步 + 目標成交日,inline edit + 「拆成任務」按鈕
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Loader2, ListTodo } from 'lucide-react';
+import { Loader2, ListTodo } from 'lucide-react';
 import type { Deal } from '@/lib/v4/types';
-import { InlineTextarea, InlineDate } from '@/components/v4/InlineEdit';
+import { InlineTextarea } from '@/components/v4/InlineEdit';
 import { createTask, patchDeal, splitNextStepIntoTasks } from '@/lib/v4/mutations';
 import { createClient } from '@/lib/supabase/client';
 
@@ -71,15 +71,6 @@ export function NextStepClient({ deal, isFixtures }: { deal: Deal; isFixtures: b
         />
       </div>
       {splitMsg && <div className="font-v4-mono text-[11px] text-ink/65">{splitMsg}</div>}
-      <div className="flex items-center gap-2 font-v4-mono text-xs text-ink/55">
-        <Calendar className="h-3 w-3 shrink-0" strokeWidth={2} />
-        <span className="shrink-0 whitespace-nowrap">目標成交</span>
-        <InlineDate
-          value={deal.target_close_date}
-          onSave={async (next) => { await patchDeal(deal.id, { target_close_date: next }); refresh(); }}
-          isFixtures={isFixtures}
-        />
-      </div>
     </section>
   );
 }

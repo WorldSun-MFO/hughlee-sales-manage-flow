@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  ArrowLeft, Briefcase, ClipboardList, Gauge, Home, LayoutGrid, LogOut, Menu, MessageSquareText,
+  ArrowLeft, Briefcase, CalendarCheck, ClipboardList, Gauge, Home, LayoutGrid, LogOut, Menu, MessageSquareText,
   Route, Settings, Users, X,
 } from 'lucide-react';
 import { cn } from '@/lib/v4/utils';
@@ -17,7 +17,7 @@ const ROLE_LABEL: Record<Role, string> = {
   rm: '💼 RM',
 };
 
-const nav: Array<{ href: string; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; group?: string }> = [
+const nav: Array<{ href: string; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; group?: string; adminOnly?: boolean }> = [
   { href: '/workspace', label: '總覽', icon: Gauge, group: 'main' },
   { href: '/workspace/today', label: '今日', icon: Home, group: 'main' },
   { href: '/workspace/tasks', label: '我的任務', icon: ClipboardList, group: 'main' },
@@ -25,6 +25,7 @@ const nav: Array<{ href: string; label: string; icon: React.ComponentType<{ clas
   { href: '/workspace/clients', label: '客戶', icon: Users, group: 'main' },
   { href: '/workspace/ai', label: 'AI 助手', icon: MessageSquareText, group: 'ai' },
   { href: '/workspace/plan', label: '成交規劃', icon: Route, group: 'ai' },
+  { href: '/workspace/close-dates', label: '成交日確認', icon: CalendarCheck, group: 'other', adminOnly: true },
   { href: '/workspace/market', label: '市場大腦', icon: Briefcase, group: 'other' },
   { href: '/workspace/settings', label: '設定', icon: Settings, group: 'other' },
 ];
@@ -93,6 +94,10 @@ export function WorkspaceShell({
   const displayName = profile?.full_name?.trim() || profile?.email || '未登入';
   const initial = (profile?.full_name?.trim() || profile?.email || '?').charAt(0).toUpperCase();
   const roleLabel = profile ? ROLE_LABEL[profile.role] : '訪客';
+
+  // adminOnly 項目(如「成交日確認」)只給管理員看;頁面本身另有後端把關
+  const isAdmin = profile?.role === 'admin';
+  const visibleNav = nav.filter((n) => !n.adminOnly || isAdmin);
 
   return (
     <div className="min-h-screen bg-cream lg:grid lg:grid-cols-[264px_1fr]">
@@ -165,17 +170,17 @@ export function WorkspaceShell({
 
         <nav className="grid flex-1 content-start gap-1 overflow-y-auto">
           <div className="label-caps mb-1 px-2 text-ink/45">主要</div>
-          {nav.filter((n) => n.group === 'main').map((n) => (
+          {visibleNav.filter((n) => n.group === 'main').map((n) => (
             <NavItem key={n.href} item={n} active={isActive(pathname, n.href)} />
           ))}
 
           <div className="label-caps mb-1 mt-3 px-2 text-ink/45">AI 工具</div>
-          {nav.filter((n) => n.group === 'ai').map((n) => (
+          {visibleNav.filter((n) => n.group === 'ai').map((n) => (
             <NavItem key={n.href} item={n} active={isActive(pathname, n.href)} />
           ))}
 
           <div className="label-caps mb-1 mt-3 px-2 text-ink/45">其他</div>
-          {nav.filter((n) => n.group === 'other').map((n) => (
+          {visibleNav.filter((n) => n.group === 'other').map((n) => (
             <NavItem key={n.href} item={n} active={isActive(pathname, n.href)} />
           ))}
         </nav>

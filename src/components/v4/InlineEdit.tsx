@@ -238,8 +238,17 @@ export function InlineDate({
   const [draft, setDraft] = useState(value ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setShadow(value); setDraft(value ?? ''); }, [value]);
+  // 進入編輯就直接彈出原生行事曆,不用再點一次輸入框(showPicker 在點擊觸發的
+  // activation 視窗內有效;不支援的瀏覽器退回原本「點輸入框開啟」)。
+  useEffect(() => {
+    if (!editing) return;
+    const el = ref.current;
+    el?.focus();
+    try { el?.showPicker?.(); } catch { /* 非使用者手勢 / 不支援時略過 */ }
+  }, [editing]);
 
   function commit(next: string) {
     const nextVal = next || null;
@@ -265,11 +274,12 @@ export function InlineDate({
     <div className={cn('grid gap-1', className)}>
       <div className="flex items-center gap-2">
         <input
+          ref={ref}
           type="date"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch { /* 略過 */ } }}
           onBlur={() => commit(draft)}
-          autoFocus
           className="rounded-md border border-ink/30 bg-cream/40 px-2.5 py-1 font-v4-mono text-sm text-ink focus:border-ink/50 focus:outline-none"
         />
         <button type="button" onClick={() => commit('')} className="text-xs text-ink/55 hover:text-claret">清除</button>
