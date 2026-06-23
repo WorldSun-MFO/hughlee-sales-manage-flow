@@ -316,12 +316,15 @@ export function TaskRow({
   useEffect(() => { setLocalEnd(task.end_time ?? null); }, [task.end_time]);
 
   // 從上方「未來規劃 / 後續需要做」方塊用 #task-<id> 連過來時:自動展開說明,
-  // 並把該列捲進視野(串流晚掛載時瀏覽器原生捲動可能已放棄,這裡補捲一次)。
+  // 並把該列捲到畫面正中央(串流晚掛載時瀏覽器原生捲動可能已放棄,這裡補捲一次)。
   useEffect(() => {
     const matchHash = () => {
       if (window.location.hash !== `#task-${task.id}`) return;
       setDescOpen(true);
-      document.getElementById(`task-${task.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      // 雙 rAF:等說明面板展開、版面重新定位後才置中,否則會用展開前的高度算位置
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.getElementById(`task-${task.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }));
     };
     matchHash();
     window.addEventListener('hashchange', matchHash);
