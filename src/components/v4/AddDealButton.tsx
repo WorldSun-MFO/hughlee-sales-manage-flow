@@ -224,6 +224,7 @@ export function AddDealButton({
               type="date"
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
+              onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch { /* 略過 */ } }}
               className="rounded-md border border-ink/15 bg-cream/40 px-3 py-2 font-v4-mono text-sm text-ink focus:border-ink/40 focus:outline-none"
             />
           </Field>
@@ -233,6 +234,7 @@ export function AddDealButton({
               type="date"
               value={expectedPayment}
               onChange={(e) => setExpectedPayment(e.target.value)}
+              onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch { /* 略過 */ } }}
               className="rounded-md border border-ink/15 bg-cream/40 px-3 py-2 font-v4-mono text-sm text-ink focus:border-ink/40 focus:outline-none"
             />
           </Field>
