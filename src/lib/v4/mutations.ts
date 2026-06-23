@@ -34,6 +34,16 @@ export async function patchDeal(dealId: string, patch: DealPatch): Promise<void>
   if (error) throw error;
 }
 
+// ---------- 已收款(成交日確認頁的打勾)----------
+export async function setPaymentReceived(dealId: string, received: boolean): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('deals')
+    .update({ payment_received: received, last_updated: new Date().toISOString() })
+    .eq('id', dealId);
+  if (error) throw error;
+}
+
 // ---------- 剛聯繫 ----------
 export async function markContacted(dealId: string): Promise<void> {
   const supabase = createClient();

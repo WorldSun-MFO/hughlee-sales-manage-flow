@@ -114,6 +114,7 @@ export interface Deal {
   stage: StageId;
   next_step: string | null;
   target_close_date: string | null;
+  payment_received?: boolean;   // 成交日確認頁的「已收款」打勾(migration 29);舊 row 為 false
   created_at: string;
   plan?: DealPlan | null;
   scores?: Scores;
