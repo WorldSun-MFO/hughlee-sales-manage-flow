@@ -21,7 +21,13 @@ import { setPaymentReceived } from '@/lib/v4/mutations';
 import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
-const GRID = 'sm:grid-cols-[52px_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_64px]';
+const GRID = 'sm:grid-cols-[52px_minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,1fr)_64px]';
+
+// 'YYYY-MM-DD' → M/D(週X)(預計收款日只顯示日期,不做倒數)
+function fmtDate(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(週${WD[d.getUTCDay()]})`;
+}
 
 function closeDateInfo(due: string, todayMs: number): { label: string; countdown: string; tone: 'overdue' | 'soon' | 'normal' } {
   const d = new Date(`${due}T00:00:00Z`);
@@ -93,6 +99,7 @@ export function CloseDateView({ deals, base }: { deals: LightDeal[]; base: '/wor
             <span className="label-caps text-ink/40">產品</span>
             <span className="label-caps text-ink/40">AUM</span>
             <span className="label-caps text-ink/40">目標成交日</span>
+            <span className="label-caps text-ink/40">預計收款日</span>
             <span className="label-caps text-center text-ink/40">已收款</span>
           </div>
 
@@ -132,6 +139,8 @@ export function CloseDateView({ deals, base }: { deals: LightDeal[]; base: '/wor
                         <span className="truncate">{d.product ?? '—'}</span>
                         <span className="text-ink/25">·</span>
                         <span className="numeric">{fmtMoney(Number(d.aum_usd))}</span>
+                        <span className="text-ink/25">·</span>
+                        <span className="numeric">收款 {d.expected_payment_date ? fmtDate(d.expected_payment_date) : '未定'}</span>
                       </div>
                     </div>
 
@@ -146,6 +155,11 @@ export function CloseDateView({ deals, base }: { deals: LightDeal[]; base: '/wor
                     <div className="pointer-events-none relative z-10 min-w-0">
                       <div className={`numeric font-v4-mono text-sm font-semibold ${dateTone}`}>{info.label}</div>
                       {!paid && <div className={`font-v4-mono text-[11px] ${dateTone}`}>{info.countdown}</div>}
+                    </div>
+
+                    {/* 預計收款日(桌機) */}
+                    <div className="numeric pointer-events-none relative z-10 hidden font-v4-mono text-sm text-ink/65 sm:block">
+                      {d.expected_payment_date ? fmtDate(d.expected_payment_date) : <span className="text-ink/35">未定</span>}
                     </div>
 
                     {/* 已收款打勾 */}

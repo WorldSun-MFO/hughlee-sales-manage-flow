@@ -60,7 +60,7 @@ const getAuthed = cache(async () => (await getAuthContext())?.supabase ?? null);
 export type LightDeal = Pick<Deal,
   'id' | 'name' | 'rm_id' | 'aum_usd' | 'product' |
   'first_contact' | 'last_updated' | 'last_contact_at' |
-  'tier' | 'stage' | 'next_step' | 'target_close_date' | 'payment_received' | 'created_at'
+  'tier' | 'stage' | 'next_step' | 'target_close_date' | 'expected_payment_date' | 'payment_received' | 'created_at'
 > & {
   scores?: Scores;
   rm?: Pick<Profile, 'id' | 'email' | 'full_name' | 'rm_code' | 'role' | 'team_id'> | null;
@@ -73,7 +73,7 @@ export const getDealsLight = cache(async (): Promise<LightDeal[]> => {
     .from('deals')
     .select(`
       id, name, rm_id, aum_usd, product, first_contact, last_updated,
-      last_contact_at, tier, stage, next_step, target_close_date, payment_received, created_at,
+      last_contact_at, tier, stage, next_step, target_close_date, expected_payment_date, payment_received, created_at,
       scores(*),
       rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role, team_id)
     `)

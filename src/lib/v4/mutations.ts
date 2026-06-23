@@ -20,6 +20,7 @@ type DealPatch = Partial<{
   tier: Tier | null;
   product: string | null;
   target_close_date: string | null;
+  expected_payment_date: string | null;
   rm_id: string;
   aum_usd: number;
   first_contact: string;
@@ -356,6 +357,7 @@ export interface NewDealInput {
   product?: string | null;
   next_step?: string | null;
   target_close_date?: string | null;
+  expected_payment_date?: string | null;
   first_contact?: string;
   rm_id?: string;   // 指派的 RM;未提供則 = 當前登入者。最終由 deals_insert RLS 把關
 }
@@ -391,6 +393,7 @@ export async function createDeal(input: NewDealInput): Promise<string> {
       product: input.product ?? null,
       next_step: input.next_step ?? null,
       target_close_date: input.target_close_date ?? null,
+      expected_payment_date: input.expected_payment_date ?? null,
       first_contact: input.first_contact ?? today,
       last_updated: now,
     })
