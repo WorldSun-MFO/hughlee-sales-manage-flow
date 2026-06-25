@@ -16,7 +16,7 @@
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Pencil, X } from 'lucide-react';
-import { cn } from '@/lib/v4/utils';
+import { cn, fmtMoney } from '@/lib/v4/utils';
 
 type SaveFn<T> = (next: T) => Promise<void>;
 
@@ -348,6 +348,74 @@ export function InlineScore({
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(String(shadow)); setEditing(false); } }}
         className="w-14 rounded-md border border-ink/30 bg-cream/40 px-1.5 py-0.5 font-v4-mono text-sm font-semibold text-ink focus:border-ink/50 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+// ---------------- Inline money(金額,USD,可空) ----------------
+export function InlineMoney({
+  value, onSave, isFixtures, placeholder,
+}: {
+  value: number | null;
+  onSave: SaveFn<number | null>;
+  isFixtures: boolean;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [shadow, setShadow] = useState<number | null>(value);
+  const [draft, setDraft] = useState(value == null ? '' : String(value));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setShadow(value); setDraft(value == null ? '' : String(value)); }, [value]);
+  useEffect(() => { if (editing) { ref.current?.focus(); ref.current?.select(); } }, [editing]);
+
+  function commit() {
+    const t = draft.trim();
+    if (t !== '' && Number.isNaN(Number(t))) { setEditing(false); setDraft(shadow == null ? '' : String(shadow)); return; }
+    const next = t === '' ? null : Math.max(0, Math.round(Number(t)));
+    if (next === shadow) { setEditing(false); return; }
+    setShadow(next);
+    setEditing(false);
+    setBusy(true); setErr(null);
+    onSave(next)
+      .catch((e) => { setShadow(value); setDraft(value == null ? '' : String(value)); setErr((e as Error).message); })
+      .finally(() => setBusy(false));
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => !isFixtures && setEditing(true)}
+        disabled={isFixtures}
+        className={cn(
+          'font-v4-mono text-sm font-semibold numeric tabular-nums relative',
+          shadow == null ? 'italic text-ink/45' : 'text-ink',
+          !isFixtures && 'rounded-sm px-1.5 py-0.5 transition hover:bg-cream/60 hover:ring-1 hover:ring-ink/20',
+          isFixtures && 'cursor-not-allowed',
+        )}
+        title={err ?? (isFixtures ? 'fixtures 模式無法編輯' : '點擊修改')}
+      >
+        {shadow == null ? (placeholder ?? '未設定') : fmtMoney(shadow)}
+        {busy && <Loader2 className="ml-1 inline h-2.5 w-2.5 animate-spin text-ink/40" strokeWidth={2} />}
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        ref={ref}
+        type="number"
+        min={0}
+        step={1000}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(shadow == null ? '' : String(shadow)); setEditing(false); } }}
+        className="w-28 rounded-md border border-ink/30 bg-cream/40 px-1.5 py-0.5 font-v4-mono text-sm font-semibold text-ink focus:border-ink/50 focus:outline-none"
       />
     </div>
   );

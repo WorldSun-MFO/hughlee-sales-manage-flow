@@ -60,11 +60,30 @@ const getAuthed = cache(async () => (await getAuthContext())?.supabase ?? null);
 export type LightDeal = Pick<Deal,
   'id' | 'name' | 'rm_id' | 'aum_usd' | 'product' |
   'first_contact' | 'last_updated' | 'last_contact_at' |
-  'tier' | 'stage' | 'next_step' | 'target_close_date' | 'expected_payment_date' | 'payment_received' | 'created_at'
+  'tier' | 'stage' | 'next_step' | 'target_close_date' | 'expected_payment_date' | 'payment_received' |
+  'company_commission' | 'sales_commission' | 'created_at'
 > & {
   scores?: Scores;
   rm?: Pick<Profile, 'id' | 'email' | 'full_name' | 'rm_code' | 'role' | 'team_id'> | null;
 };
+
+// ------------------------------------------------------------
+// 佣金欄位「看見」權限(欄位級遮罩,VIEW 安全邊界)
+//   公司收佣 company_commission：只有 admin 可看
+//   業務收佣 sales_commission ：只有 admin 或該 deal 的 RM 本人可看
+// 未授權者一律 null 掉,值根本不會傳到瀏覽器。寫入權限另由 DB trigger 強制(migration 31)。
+// ------------------------------------------------------------
+function maskCommission<T extends { rm_id: string; company_commission?: number | null; sales_commission?: number | null }>(
+  row: T, profile: Profile | null,
+): T {
+  const isAdmin = profile?.role === 'admin';
+  const isOwner = !!profile && row.rm_id === profile.id;
+  return {
+    ...row,
+    company_commission: isAdmin ? (row.company_commission ?? null) : null,
+    sales_commission: (isAdmin || isOwner) ? (row.sales_commission ?? null) : null,
+  };
+}
 
 export const getDealsLight = cache(async (): Promise<LightDeal[]> => {
   const supabase = await getAuthed();
@@ -73,13 +92,15 @@ export const getDealsLight = cache(async (): Promise<LightDeal[]> => {
     .from('deals')
     .select(`
       id, name, rm_id, aum_usd, product, first_contact, last_updated,
-      last_contact_at, tier, stage, next_step, target_close_date, expected_payment_date, payment_received, created_at,
+      last_contact_at, tier, stage, next_step, target_close_date, expected_payment_date, payment_received,
+      company_commission, sales_commission, created_at,
       scores(*),
       rm:profiles!deals_rm_id_fkey(id, email, full_name, rm_code, role, team_id)
     `)
     .order('last_updated', { ascending: false });
   if (error) return [];
-  return (data ?? []) as unknown as LightDeal[];
+  const profile = await getCurrentProfile();
+  return ((data ?? []) as unknown as LightDeal[]).map((d) => maskCommission(d, profile));
 });
 
 // ============================================================
@@ -97,7 +118,8 @@ export const getDealCore = cache(async (dealId: string): Promise<Deal | null> =>
     .eq('id', dealId)
     .single();
   if (error) return null;
-  return data as unknown as Deal;
+  const profile = await getCurrentProfile();
+  return maskCommission(data as unknown as Deal, profile);
 });
 
 export const getDealScores = cache(async (dealId: string): Promise<{ scores: Scores | null; notes: ScoreNote[] }> => {
