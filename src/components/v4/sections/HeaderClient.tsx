@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { Deal, Profile, StageId, Tier } from '@/lib/v4/types';
 import { STAGE_PROB, STAGES } from '@/lib/v4/constants';
 import { TIER_STYLES } from '@/lib/v4/utils';
-import { InlineText, InlineSelect, InlineDate } from '@/components/v4/InlineEdit';
+import { InlineText, InlineSelect, InlineDate, InlineMoney } from '@/components/v4/InlineEdit';
 import { PaymentToggle } from '@/components/v4/sections/PaymentBadge';
 import { patchDeal } from '@/lib/v4/mutations';
 
@@ -37,6 +37,10 @@ export function HeaderClient({
       : role === 'team_lead' ? profiles.filter((p) => p.id === profile.id || (!!profile.team_id && p.team_id === profile.team_id))
         : [];
   const canPickRm = (role === 'admin' || role === 'team_lead') && assignable.length > 1;
+  // 佣金欄位可看 / 可改:公司收佣=僅 admin;業務收佣=admin 或該 deal 的 RM 本人
+  // (值的「看見」已由 data 層 maskCommission 強制;這裡決定欄位是否渲染 / 可編輯)
+  const canSeeCompany = role === 'admin';
+  const canSeeSales = role === 'admin' || deal.rm_id === profile?.id;
   const nameOf = (id: string | null) => {
     if (!id) return '—';
     const p = profiles.find((x) => x.id === id);
@@ -123,6 +127,30 @@ export function HeaderClient({
             isFixtures={isFixtures}
           />
         </span>
+
+        {/* 公司收佣(只有 admin 可看 / 改) */}
+        {canSeeCompany && (
+          <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
+            <span className="whitespace-nowrap">公司收佣 ·</span>
+            <InlineMoney
+              value={deal.company_commission ?? null}
+              onSave={async (next) => { await patchDeal(deal.id, { company_commission: next }); refresh(); }}
+              isFixtures={isFixtures}
+            />
+          </span>
+        )}
+
+        {/* 業務收佣(只有 admin 或該業務本人可看 / 改) */}
+        {canSeeSales && (
+          <span className="inline-flex items-center gap-1 font-v4-mono text-xs text-ink/45">
+            <span className="whitespace-nowrap">業務收佣 ·</span>
+            <InlineMoney
+              value={deal.sales_commission ?? null}
+              onSave={async (next) => { await patchDeal(deal.id, { sales_commission: next }); refresh(); }}
+              isFixtures={isFixtures}
+            />
+          </span>
+        )}
 
         {/* 已收款 / 未收款(可切換):只在有設目標成交日時顯示 */}
         {deal.target_close_date && (

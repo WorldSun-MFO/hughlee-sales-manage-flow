@@ -116,6 +116,8 @@ export interface Deal {
   target_close_date: string | null;
   expected_payment_date?: string | null;   // 預計收款日(migration 30)
   payment_received?: boolean;   // 成交日確認頁的「已收款」打勾(migration 29);舊 row 為 false
+  company_commission?: number | null;   // 公司收佣(migration 31);只有 admin 可看 / 改,未授權者由 data 層 null 掉
+  sales_commission?: number | null;     // 業務收佣(migration 31);只有 admin 或該 RM 本人可看 / 改
   created_at: string;
   plan?: DealPlan | null;
   scores?: Scores;

@@ -21,6 +21,8 @@ type DealPatch = Partial<{
   product: string | null;
   target_close_date: string | null;
   expected_payment_date: string | null;
+  company_commission: number | null;   // 公司收佣(寫入權限由 DB trigger 強制:僅 admin)
+  sales_commission: number | null;     // 業務收佣(寫入權限由 DB trigger 強制:僅 admin 或該 RM 本人)
   rm_id: string;
   aum_usd: number;
   first_contact: string;

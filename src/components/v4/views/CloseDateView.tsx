@@ -21,7 +21,7 @@ import { setPaymentReceived } from '@/lib/v4/mutations';
 import { RealtimeRefresher } from '@/components/v4/RealtimeRefresher';
 
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
-const GRID = 'sm:grid-cols-[52px_minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,1fr)_64px]';
+const GRID = 'sm:grid-cols-[48px_minmax(0,1.3fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.95fr)_minmax(0,0.9fr)_minmax(0,0.85fr)_minmax(0,0.85fr)_60px]';
 
 // 'YYYY-MM-DD' → M/D(週X)(預計收款日只顯示日期,不做倒數)
 function fmtDate(date: string): string {
@@ -100,6 +100,8 @@ export function CloseDateView({ deals, base }: { deals: LightDeal[]; base: '/wor
             <span className="label-caps text-ink/40">AUM</span>
             <span className="label-caps text-ink/40">目標成交日</span>
             <span className="label-caps text-ink/40">預計收款日</span>
+            <span className="label-caps text-ink/40">公司收佣</span>
+            <span className="label-caps text-ink/40">業務收佣</span>
             <span className="label-caps text-center text-ink/40">已收款</span>
           </div>
 
@@ -141,6 +143,18 @@ export function CloseDateView({ deals, base }: { deals: LightDeal[]; base: '/wor
                         <span className="numeric">{fmtMoney(Number(d.aum_usd))}</span>
                         <span className="text-ink/25">·</span>
                         <span className="numeric">收款 {d.expected_payment_date ? fmtDate(d.expected_payment_date) : '未定'}</span>
+                        {d.company_commission != null && (
+                          <>
+                            <span className="text-ink/25">·</span>
+                            <span className="numeric">公司佣 {fmtMoney(Number(d.company_commission))}</span>
+                          </>
+                        )}
+                        {d.sales_commission != null && (
+                          <>
+                            <span className="text-ink/25">·</span>
+                            <span className="numeric">業務佣 {fmtMoney(Number(d.sales_commission))}</span>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -160,6 +174,16 @@ export function CloseDateView({ deals, base }: { deals: LightDeal[]; base: '/wor
                     {/* 預計收款日(桌機) */}
                     <div className="numeric pointer-events-none relative z-10 hidden font-v4-mono text-sm text-ink/65 sm:block">
                       {d.expected_payment_date ? fmtDate(d.expected_payment_date) : <span className="text-ink/35">未定</span>}
+                    </div>
+
+                    {/* 公司收佣(桌機) */}
+                    <div className="numeric pointer-events-none relative z-10 hidden font-v4-mono text-sm font-semibold text-ink/75 sm:block">
+                      {d.company_commission != null ? fmtMoney(Number(d.company_commission)) : <span className="font-normal text-ink/35">—</span>}
+                    </div>
+
+                    {/* 業務收佣(桌機) */}
+                    <div className="numeric pointer-events-none relative z-10 hidden font-v4-mono text-sm font-semibold text-ink/75 sm:block">
+                      {d.sales_commission != null ? fmtMoney(Number(d.sales_commission)) : <span className="font-normal text-ink/35">—</span>}
                     </div>
 
                     {/* 已收款打勾 */}
