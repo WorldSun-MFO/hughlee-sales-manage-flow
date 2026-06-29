@@ -56,6 +56,21 @@ export function ClientsListView({ snapshot, base, profile }: { snapshot: Snapsho
 
   const hasFilter = !!(q || stage || rmId || teamId);
 
+  // 收佣金額總計(依目前篩選 / 選定 RM 即時加總)。
+  // 值已在 data 層 maskCommission 依角色遮罩:admin 看全部;一般 RM 只有自己案件的
+  // sales_commission 有值(其餘為 null→0),company_commission 一律 null。所以這裡直接加總即正確。
+  const role = profile?.role;
+  const canSeeCompany = role === 'admin';                 // 公司收佣:僅 admin
+  const canSeeSales = !!profile;                          // 業務收佣:admin 看全部、RM 看自己
+  const companyTotal = useMemo(
+    () => filtered.reduce((s, d) => s + (Number(d.company_commission) || 0), 0),
+    [filtered],
+  );
+  const salesTotal = useMemo(
+    () => filtered.reduce((s, d) => s + (Number(d.sales_commission) || 0), 0),
+    [filtered],
+  );
+
   return (
     <div className="grid gap-10 px-4 py-6 sm:px-8 sm:py-10 lg:px-14 lg:py-14">
       <RealtimeRefresher isFixtures={isFixtures} tables={['deals', 'scores']} />
@@ -63,9 +78,27 @@ export function ClientsListView({ snapshot, base, profile }: { snapshot: Snapsho
         <div className="flex items-start justify-between gap-3 sm:gap-4">
           <div className="grid gap-2 min-w-0">
             <div className="label-caps text-ink/45">Clients</div>
-            <h1 className="font-v4-serif text-[32px] font-medium leading-[1.05] tracking-tight text-ink sm:text-[44px] lg:text-[56px]">
-              客戶名冊
-            </h1>
+            <div className="flex flex-wrap items-baseline gap-x-7 gap-y-2">
+              <h1 className="font-v4-serif text-[32px] font-medium leading-[1.05] tracking-tight text-ink sm:text-[44px] lg:text-[56px]">
+                客戶名冊
+              </h1>
+              {(canSeeCompany || canSeeSales) && (
+                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                  {canSeeCompany && (
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="label-caps text-ink/45">公司收佣</span>
+                      <span className="font-v4-mono text-lg font-semibold text-ink numeric">{fmtMoney(companyTotal)}</span>
+                    </div>
+                  )}
+                  {canSeeSales && (
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="label-caps text-ink/45">業務收佣</span>
+                      <span className="font-v4-mono text-lg font-semibold text-ink numeric">{fmtMoney(salesTotal)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="pt-2 shrink-0">
             <AddDealButton base={base} isFixtures={isFixtures} profile={profile} profiles={snapshot.profiles} />
